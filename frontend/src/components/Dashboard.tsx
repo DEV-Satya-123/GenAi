@@ -117,6 +117,9 @@ export default function Dashboard({ onRunStart, onRunEnd }: DashboardProps) {
                 break
             case 'approval_required':
                 console.log('🔔 Approval required received:', data)
+                console.log('🔔 Approval type:', data.approval_type)
+                console.log('🔔 Data:', data.data)
+                
                 setApprovalModal({
                     isOpen: true,
                     type: data.approval_type === 'push_approval' ? 'push' : 'commit',

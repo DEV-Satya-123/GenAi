@@ -314,6 +314,8 @@ async def handle_approval(request: ApprovalRequest):
                         }
                     })
                     
+                    print(f"🚀 Sent push approval request for: {current_workflow_state['commit_message']}")
+                    
                     return {
                         "success": True,
                         "message": "Commit approved, awaiting push approval",
