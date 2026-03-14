@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { Play, Square, GitCommit, Activity } from 'lucide-react'
 import axios from 'axios'
 import ApprovalModal from './ApprovalModal'
+import WorkflowVisualization from './WorkflowVisualization'
 
 interface DashboardProps {
     onRunStart: () => void
@@ -89,10 +90,13 @@ export default function Dashboard({ onRunStart, onRunEnd }: DashboardProps) {
         }
     }, [])
 
+    const [currentWorkflowStep, setCurrentWorkflowStep] = useState('detecting')
+
     const handleWebSocketMessage = (data: any) => {
         switch (data.type) {
             case 'workflow_started':
                 addLog(`🚀 ${data.message}`)
+                setCurrentWorkflowStep('detecting')
                 break
             case 'workflow_paused':
                 addLog(`⏸️ ${data.message}`)
@@ -108,9 +112,14 @@ export default function Dashboard({ onRunStart, onRunEnd }: DashboardProps) {
                 break
             case 'step_update':
                 addLog(`🔄 ${data.message}`)
+                if (data.message.includes('Analyzing')) setCurrentWorkflowStep('analyzing')
+                if (data.message.includes('Generating')) setCurrentWorkflowStep('generating')
+                if (data.message.includes('Committing')) setCurrentWorkflowStep('committing')
+                if (data.message.includes('Pushing')) setCurrentWorkflowStep('pushing')
                 break
             case 'step_complete':
                 addLog(`✅ ${data.message}`)
+                if (data.message.includes('committed')) setCurrentWorkflowStep('commit_approval')
                 break
             case 'step_error':
                 addLog(`❌ ${data.message}`)
@@ -136,6 +145,14 @@ export default function Dashboard({ onRunStart, onRunEnd }: DashboardProps) {
                 setTimeout(() => {
                     setApprovalModal(newModalState)
                 }, 100)
+                
+                // Update workflow step
+                if (data.approval_type === 'push_approval') {
+                    setCurrentWorkflowStep('push_approval')
+                } else {
+                    setCurrentWorkflowStep('commit_approval')
+                }
+                
                 addLog(`⏸️ Approval required: ${data.data.commit_message || 'Waiting for approval'}`)
                 break
             case 'workflow_complete':
@@ -145,6 +162,7 @@ export default function Dashboard({ onRunStart, onRunEnd }: DashboardProps) {
                     addLog(`✅ Committed: ${data.result.committed}`)
                     addLog(`🚀 Pushed: ${data.result.pushed}`)
                 }
+                setCurrentWorkflowStep('complete')
                 setIsRunning(false)
                 onRunEnd()
                 break
@@ -213,6 +231,19 @@ export default function Dashboard({ onRunStart, onRunEnd }: DashboardProps) {
 
     return (
         <>
+            {/* 3D Workflow Visualization */}
+            <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="mb-6"
+            >
+                <WorkflowVisualization 
+                    currentStep={currentWorkflowStep}
+                    isRunning={isRunning}
+                />
+            </motion.div>
+
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
