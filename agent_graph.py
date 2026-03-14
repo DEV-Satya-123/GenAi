@@ -10,6 +10,7 @@ class AgentState(TypedDict):
     commit_message: str
     approved: bool
     committed: bool
+    push_approved: bool
     pushed: bool
     error: str
 
@@ -29,6 +30,7 @@ class GitAutomationAgent:
         workflow.add_node("generate_commit_message", self.generate_commit_message)
         workflow.add_node("human_approval", self.human_approval)
         workflow.add_node("git_commit", self.git_commit)
+        workflow.add_node("push_approval", self.push_approval)
         workflow.add_node("git_push", self.git_push)
         
         # Define edges
@@ -55,7 +57,17 @@ class GitAutomationAgent:
             }
         )
         
-        workflow.add_edge("git_commit", "git_push")
+        workflow.add_edge("git_commit", "push_approval")
+        
+        workflow.add_conditional_edges(
+            "push_approval",
+            lambda x: "push" if x["push_approved"] else "end",
+            {
+                "push": "git_push",
+                "end": END
+            }
+        )
+        
         workflow.add_edge("git_push", END)
         
         return workflow.compile()
@@ -97,11 +109,11 @@ class GitAutomationAgent:
         print(f"   {state['commit_message']}")
         print("="*60)
         
-        response = input("\n✋ Approve commit and push? (y/n): ").strip().lower()
+        response = input("\n✋ Approve commit? (y/n): ").strip().lower()
         state["approved"] = response == 'y'
         
         if state["approved"]:
-            print("✅ Approved! Proceeding...")
+            print("✅ Approved! Proceeding to commit...")
         else:
             print("❌ Rejected. Aborting...")
         
@@ -121,6 +133,22 @@ class GitAutomationAgent:
         else:
             state["error"] = "Failed to commit"
             state["committed"] = False
+        
+        return state
+    
+    def push_approval(self, state: AgentState) -> AgentState:
+        print("\n" + "="*60)
+        print(f"🚀 Ready to push to remote repository")
+        print(f"   Branch: {self.git_tools.get_current_branch()}")
+        print("="*60)
+        
+        response = input("\n✋ Approve push to remote? (y/n): ").strip().lower()
+        state["push_approved"] = response == 'y'
+        
+        if state["push_approved"]:
+            print("✅ Approved! Pushing...")
+        else:
+            print("❌ Push cancelled. Changes are committed locally only.")
         
         return state
     
@@ -144,6 +172,7 @@ class GitAutomationAgent:
             "commit_message": "",
             "approved": False,
             "committed": False,
+            "push_approved": False,
             "pushed": False,
             "error": ""
         }
