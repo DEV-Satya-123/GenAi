@@ -351,7 +351,7 @@ async def handle_approval(request: ApprovalRequest):
                 }
         
         # Handle push approval
-        elif request.approval_type == "push":
+        elif request.approval_type == "push" or request.approval_type == "push_approval":
             print("🚀 Processing push approval...")
             if request.action == "approve":
                 print("✅ Push approved, starting push...")

@@ -120,9 +120,12 @@ export default function Dashboard({ onRunStart, onRunEnd }: DashboardProps) {
                 console.log('🔔 Approval type:', data.approval_type)
                 console.log('🔔 Data:', data.data)
                 
+                const modalType = data.approval_type === 'push_approval' ? 'push' : 'commit'
+                console.log('🔔 Setting modal type to:', modalType)
+                
                 setApprovalModal({
                     isOpen: true,
-                    type: data.approval_type === 'push_approval' ? 'push' : 'commit',
+                    type: modalType,
                     message: data.data.commit_message || 'Approval needed',
                     data: data.data
                 })
