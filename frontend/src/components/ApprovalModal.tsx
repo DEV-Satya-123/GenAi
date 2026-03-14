@@ -30,6 +30,7 @@ export default function ApprovalModal({
   }
 
   const handleApprove = () => {
+    console.log('🔘 Approve button clicked, isEditing:', isEditing, 'editedMessage:', editedMessage)
     onApprove(isEditing ? editedMessage : message)
     setIsEditing(false)
   }
@@ -40,6 +41,7 @@ export default function ApprovalModal({
   }
 
   const handleReject = () => {
+    console.log('🔘 Reject button clicked')
     onReject()
     setIsEditing(false)
   }
