@@ -276,8 +276,10 @@ async def handle_approval(request: ApprovalRequest):
         if not current_agent or not current_workflow_state:
             raise HTTPException(status_code=400, detail="No active workflow to approve")
         
+        print(f"🔔 Handling approval: {request.action} for {request.approval_type}")
+        
         # Handle commit approval
-        if request.approval_type == "commit" or current_workflow_state.get("commit_message"):
+        if request.approval_type == "commit":
             if request.action == "approve":
                 # Update commit message if edited
                 if request.commit_message:
@@ -337,7 +339,7 @@ async def handle_approval(request: ApprovalRequest):
                 }
         
         # Handle push approval
-        elif request.approval_type == "push" or current_workflow_state.get("committed"):
+        elif request.approval_type == "push":
             if request.action == "approve":
                 await ws_manager.broadcast({
                     "type": "step_update",
@@ -383,7 +385,7 @@ async def handle_approval(request: ApprovalRequest):
         
         return {
             "success": False,
-            "message": "Invalid approval state"
+            "message": f"Invalid approval state: {request.approval_type}"
         }
         
     except Exception as e:
