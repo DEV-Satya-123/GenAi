@@ -1,6 +1,28 @@
 # 🤖 AI Git Automation Agent
 
-An intelligent Git automation tool that uses Google Gemini AI to generate meaningful commit messages and automate your Git workflow with human-in-the-loop approval.
+An intelligent Git automation tool with a professional web dashboard that uses Google Gemini AI to generate meaningful commit messages and automate your Git workflow with dual human-in-the-loop approval.
+
+## 🎯 Project Structure
+
+```
+ai_git_agent/
+├── backend/              # FastAPI server
+│   ├── api.py           # REST API & WebSocket
+│   └── requirements.txt
+├── frontend/            # React dashboard
+│   ├── src/
+│   │   ├── components/  # UI components
+│   │   ├── App.tsx
+│   │   └── main.tsx
+│   └── package.json
+├── llm/                 # AI integration
+│   └── gemini_client.py
+├── tools/               # Git operations
+│   └── git_tools.py
+├── agent_graph.py       # LangGraph workflow
+├── main.py             # CLI entry point
+└── config.py           # Configuration
+```
 
 ## ✨ Features
 
