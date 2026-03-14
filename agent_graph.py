@@ -108,14 +108,29 @@ class GitAutomationAgent:
         print(f"📋 Proposed commit message:")
         print(f"   {state['commit_message']}")
         print("="*60)
+        print("\nOptions:")
+        print("  [y] Yes - Approve and use this message")
+        print("  [n] No - Reject and abort")
+        print("  [e] Edit - Modify the commit message")
         
-        response = input("\n✋ Approve commit? (y/n): ").strip().lower()
-        state["approved"] = response == 'y'
+        response = input("\n✋ Your choice (y/n/e): ").strip().lower()
         
-        if state["approved"]:
+        if response == 'e':
+            print("\n✏️  Enter your custom commit message:")
+            custom_message = input("   > ").strip()
+            if custom_message:
+                state["commit_message"] = custom_message
+                print(f"✅ Updated to: {custom_message}")
+                state["approved"] = True
+            else:
+                print("❌ Empty message. Aborting...")
+                state["approved"] = False
+        elif response == 'y':
             print("✅ Approved! Proceeding to commit...")
+            state["approved"] = True
         else:
             print("❌ Rejected. Aborting...")
+            state["approved"] = False
         
         return state
     

@@ -20,14 +20,26 @@ class GeminiClient:
     
     def generate_commit_message(self, diff: str) -> str:
         prompt = PromptTemplate(
-            template="""You are an expert at writing clear, concise git commit messages.
-Analyze the following git diff and generate a meaningful commit message.
+            template="""You are an expert at writing SHORT, meaningful git commit messages.
+Analyze the git diff and generate ONE concise commit message that summarizes ALL changes.
 
-Follow these guidelines:
-- Use conventional commit format (feat:, fix:, docs:, refactor:, etc.)
-- Be specific about what changed
-- Keep it under 72 characters if possible
-- Focus on the "what" and "why", not the "how"
+IMPORTANT RULES:
+- Use conventional commit format (feat:, fix:, docs:, refactor:, chore:, style:)
+- Write ONE single message for ALL changes combined
+- Keep it under 50 characters
+- Be specific but brief
+- Focus on the main change, not every detail
+- DO NOT list multiple changes separately
+
+Examples of GOOD messages:
+- "feat: add user authentication"
+- "fix: resolve login bug"
+- "docs: update README"
+- "refactor: simplify auth logic"
+
+Examples of BAD messages (too detailed):
+- "feat: add login.py, update auth.py, modify config.py"
+- "fix: fix bug in line 23, update function in line 45"
 
 Git Diff:
 {diff}
