@@ -303,6 +303,9 @@ async def handle_approval(request: ApprovalRequest):
                         "message": "Changes committed successfully!"
                     })
                     
+                    # Add a small delay before asking for push approval
+                    await asyncio.sleep(1.5)
+                    
                     # Now ask for push approval
                     await ws_manager.broadcast({
                         "type": "approval_required",
