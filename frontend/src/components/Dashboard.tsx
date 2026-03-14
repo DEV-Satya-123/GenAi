@@ -180,12 +180,16 @@ export default function Dashboard({ onRunStart, onRunEnd }: DashboardProps) {
             approval_type: approvalModal.type
         }
 
+        console.log('📤 Sending approval data:', approvalData)
+
         try {
             // Send approval via new API endpoint
-            await axios.post('/api/approve', approvalData)
+            const response = await axios.post('/api/approve', approvalData)
+            console.log('📥 Approval response:', response.data)
 
             addLog(`✅ ${approvalModal.type === 'commit' ? 'Commit' : 'Push'} ${approved ? 'approved' : 'rejected'}`)
         } catch (error: any) {
+            console.error('❌ Approval error:', error)
             addLog(`❌ Error sending approval: ${error.message}`)
         }
 

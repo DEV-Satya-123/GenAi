@@ -273,6 +273,12 @@ async def handle_approval(request: ApprovalRequest):
     try:
         global current_agent, current_workflow_state
         
+        print(f"🔔 Received approval request:")
+        print(f"   Action: {request.action}")
+        print(f"   Approval Type: {request.approval_type}")
+        print(f"   Commit Message: {request.commit_message}")
+        print(f"   Current State: {current_workflow_state}")
+        
         if not current_agent or not current_workflow_state:
             raise HTTPException(status_code=400, detail="No active workflow to approve")
         
@@ -280,6 +286,7 @@ async def handle_approval(request: ApprovalRequest):
         
         # Handle commit approval
         if request.approval_type == "commit":
+            print("📝 Processing commit approval...")
             if request.action == "approve":
                 # Update commit message if edited
                 if request.commit_message:
@@ -345,7 +352,9 @@ async def handle_approval(request: ApprovalRequest):
         
         # Handle push approval
         elif request.approval_type == "push":
+            print("🚀 Processing push approval...")
             if request.action == "approve":
+                print("✅ Push approved, starting push...")
                 await ws_manager.broadcast({
                     "type": "step_update",
                     "message": "Pushing to remote repository..."
@@ -353,6 +362,7 @@ async def handle_approval(request: ApprovalRequest):
                 
                 if current_agent.git_tools.git_push():
                     current_workflow_state["pushed"] = True
+                    print("✅ Push completed successfully!")
                     
                     await ws_manager.broadcast({
                         "type": "workflow_complete",
@@ -370,9 +380,11 @@ async def handle_approval(request: ApprovalRequest):
                         "result": current_workflow_state
                     }
                 else:
+                    print("❌ Push failed!")
                     raise HTTPException(status_code=500, detail="Failed to push changes")
             
             elif request.action == "reject":
+                print("❌ Push rejected by user")
                 await ws_manager.broadcast({
                     "type": "workflow_complete",
                     "message": "Push rejected by user. Changes are committed locally."
@@ -388,12 +400,14 @@ async def handle_approval(request: ApprovalRequest):
                     "result": current_workflow_state
                 }
         
+        print(f"❌ Invalid approval state: {request.approval_type}")
         return {
             "success": False,
             "message": f"Invalid approval state: {request.approval_type}"
         }
         
     except Exception as e:
+        print(f"💥 Error in handle_approval: {e}")
         await ws_manager.broadcast({
             "type": "workflow_error",
             "message": str(e)
