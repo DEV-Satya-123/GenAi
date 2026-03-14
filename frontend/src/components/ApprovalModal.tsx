@@ -11,16 +11,19 @@ interface ApprovalModalProps {
   onClose?: () => void
 }
 
-export default function ApprovalModal({ 
-  isOpen, 
-  type, 
-  message, 
-  onApprove, 
+export default function ApprovalModal({
+  isOpen,
+  type,
+  message,
+  onApprove,
   onReject,
-  onClose 
+  onClose
 }: ApprovalModalProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editedMessage, setEditedMessage] = useState(message)
+
+  // Debug logging
+  console.log('🎭 ApprovalModal render:', { isOpen, type, message })
 
   const handleClose = () => {
     if (onClose) {
@@ -70,7 +73,7 @@ export default function ApprovalModal({
               <h2 className="text-2xl font-bold flex-1">
                 {type === 'commit' ? 'Commit Approval' : 'Push Approval'}
               </h2>
-              
+
               {/* Close button */}
               {onClose && (
                 <motion.button
@@ -90,7 +93,7 @@ export default function ApprovalModal({
                 <h3 className="text-lg font-semibold mb-3">
                   AI Generated Commit Message:
                 </h3>
-                
+
                 {isEditing ? (
                   <div className="space-y-3">
                     <textarea

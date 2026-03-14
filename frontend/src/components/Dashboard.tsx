@@ -123,12 +123,19 @@ export default function Dashboard({ onRunStart, onRunEnd }: DashboardProps) {
                 const modalType = data.approval_type === 'push_approval' ? 'push' : 'commit'
                 console.log('🔔 Setting modal type to:', modalType)
 
-                setApprovalModal({
+                const newModalState = {
                     isOpen: true,
                     type: modalType,
                     message: data.data.commit_message || 'Approval needed',
                     data: data.data
-                })
+                }
+                
+                console.log('🔔 New modal state:', newModalState)
+                
+                // Small delay to ensure modal state updates properly
+                setTimeout(() => {
+                    setApprovalModal(newModalState)
+                }, 100)
                 addLog(`⏸️ Approval required: ${data.data.commit_message || 'Waiting for approval'}`)
                 break
             case 'workflow_complete':
