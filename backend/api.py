@@ -11,7 +11,11 @@ from typing import Optional, List
 import asyncio
 import sys
 import os
+import uuid
+import subprocess
+import json
 from datetime import datetime
+from pathlib import Path
 
 # Add parent directory to path to import our modules
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -67,6 +71,36 @@ except ImportError as e:
     from config import REPO_PATH
     LANGGRAPH_AVAILABLE = False
     print("✅ Simple fallback agent created")
+
+# Global variables to track current workflow
+current_agent = None
+current_thread_id = None
+current_repo_path = REPO_PATH  # Initialize with default repo path
+
+# Repository management
+CLONED_REPOS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cloned-repos")
+REPOS_CONFIG_FILE = os.path.join(CLONED_REPOS_DIR, "repos.json")
+
+# Ensure cloned repos directory exists
+os.makedirs(CLONED_REPOS_DIR, exist_ok=True)
+
+
+def load_repositories():
+    """Load repository list from config file"""
+    if os.path.exists(REPOS_CONFIG_FILE):
+        try:
+            with open(REPOS_CONFIG_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+
+def save_repositories(repos):
+    """Save repository list to config file"""
+    with open(REPOS_CONFIG_FILE, 'w') as f:
+        json.dump(repos, f, indent=2)
+
 
 app = FastAPI(
     title="AI Git Automation API",
@@ -128,6 +162,21 @@ class RunResponse(BaseModel):
     result: Optional[dict] = None
 
 
+class CloneRequest(BaseModel):
+    git_url: str
+    name: str = None
+
+
+class SetActiveRepoRequest(BaseModel):
+    repo_id: str
+
+
+class ApprovalRequest(BaseModel):
+    action: str
+    commit_message: str = None
+    approval_type: str = None
+
+
 @app.get("/")
 async def root():
     return {
@@ -154,6 +203,196 @@ async def get_status():
     except Exception as e:
         print(f"Error in get_status: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting status: {str(e)}")
+
+
+@app.get("/api/repositories")
+async def get_repositories():
+    """Get list of all cloned repositories"""
+    try:
+        repos = load_repositories()
+        global current_repo_path
+        
+        # Add current active repo info
+        for repo_id, repo_info in repos.items():
+            repo_info["is_active"] = repo_info["path"] == current_repo_path
+            
+            # Check if repo still exists
+            if os.path.exists(repo_info["path"]):
+                repo_info["exists"] = True
+                # Get current branch and changes
+                try:
+                    from tools.git_tools import GitTools
+                    git_tools = GitTools(repo_info["path"])
+                    repo_info["current_branch"] = git_tools.get_current_branch()
+                    repo_info["has_changes"] = git_tools.has_changes()
+                except:
+                    repo_info["current_branch"] = "unknown"
+                    repo_info["has_changes"] = False
+            else:
+                repo_info["exists"] = False
+        
+        return {
+            "success": True,
+            "repositories": repos,
+            "active_repo_path": current_repo_path
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/clone")
+async def clone_repository(request: CloneRequest):
+    """Clone a Git repository"""
+    try:
+        git_url = request.git_url.strip()
+        
+        # Extract repo name from URL
+        if request.name:
+            repo_name = request.name
+        else:
+            repo_name = git_url.split('/')[-1].replace('.git', '')
+        
+        # Create unique repo ID
+        repo_id = f"{repo_name}_{uuid.uuid4().hex[:8]}"
+        repo_path = os.path.join(CLONED_REPOS_DIR, repo_id)
+        
+        await ws_manager.broadcast({
+            "type": "clone_started",
+            "message": f"Cloning repository: {git_url}"
+        })
+        
+        # Clone the repository
+        try:
+            result = subprocess.run(
+                ["git", "clone", git_url, repo_path],
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout
+            )
+            
+            if result.returncode != 0:
+                raise Exception(f"Git clone failed: {result.stderr}")
+            
+            # Save repository info
+            repos = load_repositories()
+            repos[repo_id] = {
+                "id": repo_id,
+                "name": repo_name,
+                "git_url": git_url,
+                "path": repo_path,
+                "cloned_at": datetime.now().isoformat(),
+                "is_active": False
+            }
+            save_repositories(repos)
+            
+            await ws_manager.broadcast({
+                "type": "clone_complete",
+                "message": f"Repository cloned successfully: {repo_name}",
+                "repo_id": repo_id
+            })
+            
+            return {
+                "success": True,
+                "message": "Repository cloned successfully",
+                "repo_id": repo_id,
+                "repo_path": repo_path
+            }
+            
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status_code=408, detail="Clone operation timed out")
+        except Exception as e:
+            # Clean up failed clone
+            if os.path.exists(repo_path):
+                import shutil
+                shutil.rmtree(repo_path, ignore_errors=True)
+            raise HTTPException(status_code=500, detail=f"Clone failed: {str(e)}")
+            
+    except Exception as e:
+        await ws_manager.broadcast({
+            "type": "clone_error",
+            "message": f"Clone failed: {str(e)}"
+        })
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/set-active-repo")
+async def set_active_repository(request: SetActiveRepoRequest):
+    """Set the active repository for the agent"""
+    try:
+        repos = load_repositories()
+        
+        if request.repo_id not in repos:
+            raise HTTPException(status_code=404, detail="Repository not found")
+        
+        repo_info = repos[request.repo_id]
+        
+        if not os.path.exists(repo_info["path"]):
+            raise HTTPException(status_code=404, detail="Repository path does not exist")
+        
+        # Update global current repo path
+        global current_repo_path
+        current_repo_path = repo_info["path"]
+        
+        # Update active status in repos
+        for repo_id, repo_data in repos.items():
+            repo_data["is_active"] = (repo_id == request.repo_id)
+        save_repositories(repos)
+        
+        await ws_manager.broadcast({
+            "type": "active_repo_changed",
+            "message": f"Active repository changed to: {repo_info['name']}",
+            "repo_id": request.repo_id,
+            "repo_path": current_repo_path
+        })
+        
+        return {
+            "success": True,
+            "message": "Active repository updated",
+            "active_repo": repo_info
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/repository/{repo_id}")
+async def delete_repository(repo_id: str):
+    """Delete a cloned repository"""
+    try:
+        repos = load_repositories()
+        
+        if repo_id not in repos:
+            raise HTTPException(status_code=404, detail="Repository not found")
+        
+        repo_info = repos[repo_id]
+        
+        # Don't delete if it's the active repo
+        global current_repo_path
+        if repo_info["path"] == current_repo_path:
+            raise HTTPException(status_code=400, detail="Cannot delete active repository")
+        
+        # Remove directory
+        if os.path.exists(repo_info["path"]):
+            import shutil
+            shutil.rmtree(repo_info["path"], ignore_errors=True)
+        
+        # Remove from config
+        del repos[repo_id]
+        save_repositories(repos)
+        
+        await ws_manager.broadcast({
+            "type": "repo_deleted",
+            "message": f"Repository deleted: {repo_info['name']}",
+            "repo_id": repo_id
+        })
+        
+        return {
+            "success": True,
+            "message": "Repository deleted successfully"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/run", response_model=RunResponse)
@@ -259,6 +498,45 @@ async def run_agent():
 # Global variables to track current workflow
 current_agent = None
 current_workflow_state = None
+
+
+# Global variables to track current workflow
+current_agent = None
+current_thread_id = None
+current_repo_path = REPO_PATH  # Initialize with default repo path
+
+# Repository management
+CLONED_REPOS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cloned-repos")
+REPOS_CONFIG_FILE = os.path.join(CLONED_REPOS_DIR, "repos.json")
+
+# Ensure cloned repos directory exists
+os.makedirs(CLONED_REPOS_DIR, exist_ok=True)
+
+
+def load_repositories():
+    """Load repository list from config file"""
+    if os.path.exists(REPOS_CONFIG_FILE):
+        try:
+            with open(REPOS_CONFIG_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+
+def save_repositories(repos):
+    """Save repository list to config file"""
+    with open(REPOS_CONFIG_FILE, 'w') as f:
+        json.dump(repos, f, indent=2)
+
+
+class CloneRequest(BaseModel):
+    git_url: str
+    name: str = None
+
+
+class SetActiveRepoRequest(BaseModel):
+    repo_id: str
 
 
 class ApprovalRequest(BaseModel):

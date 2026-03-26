@@ -3,9 +3,15 @@ import { motion } from 'framer-motion'
 import Dashboard from './components/Dashboard'
 import Header from './components/Header'
 import StatusCard from './components/StatusCard'
+import RepositoryManager from './components/RepositoryManager'
 
 function App() {
   const [isRunning, setIsRunning] = useState(false)
+  const [currentRepoPath, setCurrentRepoPath] = useState('')
+
+  const handleRepositoryChange = (repoPath: string) => {
+    setCurrentRepoPath(repoPath)
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
@@ -24,6 +30,8 @@ function App() {
             Intelligent commit message generation powered by Google Gemini
           </p>
         </motion.div>
+
+        <RepositoryManager onRepositoryChange={handleRepositoryChange} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           <StatusCard />
