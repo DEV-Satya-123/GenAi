@@ -1,0 +1,291 @@
+import { useState, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Plus, GitBranch, Trash2, Check, X, Download, Folder, ExternalLink } from 'lucide-react'
+import axios from 'axios'
+
+interface Repository {
+    id: string
+    name: string
+    git_url: string
+    path: string
+    cloned_at: string
+    is_active: boolean
+    exists?: boolean
+    current_branch?: string
+    has_changes?: boolean
+}
+
+interface RepositoryManagerProps {
+    onRepositoryChange: (repoPath: string) => void
+}
+
+export default function RepositoryManager({ onRepositoryChange }: RepositoryManagerProps) {
+    const [repositories, setRepositories] = useState<Record<string, Repository>>({})
+    const [isCloning, setIsCloning] = useState(false)
+    const [showCloneForm, setShowCloneForm] = useState(false)
+    const [cloneUrl, setCloneUrl] = useState('')
+    const [repoName, setRepoName] = useState('')
+    const [activeRepoPath, setActiveRepoPath] = useState('')
+
+    useEffect(() => {
+        fetchRepositories()
+    }, [])
+
+    const fetchRepositories = async () => {
+        try {
+            const response = await axios.get('/api/repositories')
+            if (response.data.success) {
+                setRepositories(response.data.repositories)
+                setActiveRepoPath(response.data.active_repo_path)
+            }
+        } catch (error) {
+            console.error('Failed to fetch repositories:', error)
+        }
+    }
+
+    const handleClone = async () => {
+        if (!cloneUrl.trim()) return
+
+        setIsCloning(true)
+        try {
+            const response = await axios.post('/api/clone', {
+                git_url: cloneUrl,
+                name: repoName || undefined
+            })
+
+            if (response.data.success) {
+                setCloneUrl('')
+                setRepoName('')
+                setShowCloneForm(false)
+                await fetchRepositories()
+            }
+        } catch (error: any) {
+            console.error('Clone failed:', error)
+            alert(`Clone failed: ${error.response?.data?.detail || error.message}`)
+        } finally {
+            setIsCloning(false)
+        }
+    }
+
+    const handleSetActive = async (repoId: string) => {
+        try {
+            const response = await axios.post('/api/set-active-repo', {
+                repo_id: repoId
+            })
+
+            if (response.data.success) {
+                await fetchRepositories()
+                onRepositoryChange(response.data.active_repo.path)
+            }
+        } catch (error: any) {
+            console.error('Failed to set active repository:', error)
+            alert(`Failed to set active repository: ${error.response?.data?.detail || error.message}`)
+        }
+    }
+
+    const handleDelete = async (repoId: string) => {
+        if (!confirm('Are you sure you want to delete this repository?')) return
+
+        try {
+            const response = await axios.delete(`/api/repository/${repoId}`)
+            if (response.data.success) {
+                await fetchRepositories()
+            }
+        } catch (error: any) {
+            console.error('Failed to delete repository:', error)
+            alert(`Failed to delete repository: ${error.response?.data?.detail || error.message}`)
+        }
+    }
+
+    const getRepoDisplayName = (repo: Repository) => {
+        return repo.name || repo.git_url.split('/').pop()?.replace('.git', '') || 'Unknown'
+    }
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="glass rounded-2xl p-6 mb-6"
+        >
+            <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                    <Folder className="w-6 h-6 text-purple-400" />
+                    <h2 className="text-2xl font-bold">Repository Manager</h2>
+                </div>
+
+                <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setShowCloneForm(!showCloneForm)}
+                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg font-medium transition-colors"
+                >
+                    <Plus className="w-5 h-5" />
+                    Clone Repository
+                </motion.button>
+            </div>
+
+            {/* Clone Form */}
+            <AnimatePresence>
+                {showCloneForm && (
+                    <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="mb-6 p-4 bg-black/20 rounded-lg border border-white/10"
+                    >
+                        <h3 className="text-lg font-semibold mb-4">Clone New Repository</h3>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Git URL *</label>
+                                <input
+                                    type="text"
+                                    value={cloneUrl}
+                                    onChange={(e) => setCloneUrl(e.target.value)}
+                                    placeholder="https://github.com/username/repository.git"
+                                    className="w-full p-3 bg-black/30 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-purple-400"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Repository Name (Optional)</label>
+                                <input
+                                    type="text"
+                                    value={repoName}
+                                    onChange={(e) => setRepoName(e.target.value)}
+                                    placeholder="my-project"
+                                    className="w-full p-3 bg-black/30 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-purple-400"
+                                />
+                            </div>
+
+                            <div className="flex gap-3">
+                                <motion.button
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={handleClone}
+                                    disabled={!cloneUrl.trim() || isCloning}
+                                    className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-medium transition-colors"
+                                >
+                                    {isCloning ? (
+                                        <>
+                                            <Download className="w-4 h-4 animate-spin" />
+                                            Cloning...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Download className="w-4 h-4" />
+                                            Clone Repository
+                                        </>
+                                    )}
+                                </motion.button>
+
+                                <motion.button
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={() => setShowCloneForm(false)}
+                                    className="flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg font-medium transition-colors"
+                                >
+                                    <X className="w-4 h-4" />
+                                    Cancel
+                                </motion.button>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Repository List */}
+            <div className="space-y-3">
+                {Object.keys(repositories).length === 0 ? (
+                    <div className="text-center py-8 text-gray-400">
+                        <Folder className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                        <p>No repositories cloned yet</p>
+                        <p className="text-sm">Clone a repository to get started</p>
+                    </div>
+                ) : (
+                    Object.values(repositories).map((repo) => (
+                        <motion.div
+                            key={repo.id}
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            className={`p-4 rounded-lg border transition-all ${repo.is_active
+                                ? 'bg-purple-500/20 border-purple-500/50'
+                                : 'bg-black/20 border-white/10 hover:border-white/20'
+                                }`}
+                        >
+                            <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <h3 className="font-semibold text-lg">{getRepoDisplayName(repo)}</h3>
+                                        {repo.is_active && (
+                                            <span className="px-2 py-1 bg-purple-500 text-white text-xs rounded-full">
+                                                Active
+                                            </span>
+                                        )}
+                                        {!repo.exists && (
+                                            <span className="px-2 py-1 bg-red-500 text-white text-xs rounded-full">
+                                                Missing
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <div className="flex items-center gap-4 text-sm text-gray-400">
+                                        <div className="flex items-center gap-1">
+                                            <ExternalLink className="w-4 h-4" />
+                                            <span className="truncate max-w-xs">{repo.git_url}</span>
+                                        </div>
+
+                                        {repo.current_branch && (
+                                            <div className="flex items-center gap-1">
+                                                <GitBranch className="w-4 h-4" />
+                                                <span>{repo.current_branch}</span>
+                                            </div>
+                                        )}
+
+                                        {repo.has_changes && (
+                                            <span className="text-yellow-400">• Changes detected</span>
+                                        )}
+                                    </div>
+
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Cloned: {new Date(repo.cloned_at).toLocaleDateString()}
+                                    </p>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    {!repo.is_active && repo.exists && (
+                                        <motion.button
+                                            whileHover={{ scale: 1.05 }}
+                                            whileTap={{ scale: 0.95 }}
+                                            onClick={() => handleSetActive(repo.id)}
+                                            className="flex items-center gap-1 px-3 py-1 bg-green-600 hover:bg-green-700 rounded text-sm font-medium transition-colors"
+                                        >
+                                            <Check className="w-4 h-4" />
+                                            Set Active
+                                        </motion.button>
+                                    )}
+
+                                    <motion.button
+                                        whileHover={{ scale: repo.is_active ? 1 : 1.05 }}
+                                        whileTap={{ scale: repo.is_active ? 1 : 0.95 }}
+                                        onClick={() => handleDelete(repo.id)}
+                                        disabled={repo.is_active}
+                                        className={`flex items-center gap-1 px-3 py-1 rounded text-sm font-medium transition-colors ${repo.is_active
+                                            ? 'bg-gray-500 cursor-not-allowed opacity-50'
+                                            : 'bg-red-600 hover:bg-red-700'
+                                            }`}
+                                        title={repo.is_active ? "Cannot delete active repository" : "Delete cloned repository"}
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                        Remove Clone
+                                    </motion.button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    ))
+                )}
+            </div>
+        </motion.div>
+    )
+}
