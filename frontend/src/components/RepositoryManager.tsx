@@ -10,6 +10,8 @@ interface Repository {
     path: string
     cloned_at: string
     is_active: boolean
+    is_local?: boolean  // Local repository (existing project)
+    is_clone_to_path?: boolean  // Cloned to specific path
     exists?: boolean
     current_branch?: string
     has_changes?: boolean
@@ -23,10 +25,12 @@ export default function RepositoryManager({ onRepositoryChange }: RepositoryMana
     const [repositories, setRepositories] = useState<Record<string, Repository>>({})
     const [isCloning, setIsCloning] = useState(false)
     const [showCloneForm, setShowCloneForm] = useState(false)
+    const [showLocalForm, setShowLocalForm] = useState(false)
     const [cloneUrl, setCloneUrl] = useState('')
     const [repoName, setRepoName] = useState('')
-    const [activeRepoPath, setActiveRepoPath] = useState('')
-
+    const [cloneToPath, setCloneToPath] = useState('')  // Where to clone the repo
+    const [localPath, setLocalPath] = useState('')
+    const [localRepoName, setLocalRepoName] = useState('')
     useEffect(() => {
         fetchRepositories()
     }, [])
@@ -36,7 +40,6 @@ export default function RepositoryManager({ onRepositoryChange }: RepositoryMana
             const response = await axios.get('/api/repositories')
             if (response.data.success) {
                 setRepositories(response.data.repositories)
-                setActiveRepoPath(response.data.active_repo_path)
             }
         } catch (error) {
             console.error('Failed to fetch repositories:', error)
@@ -44,24 +47,50 @@ export default function RepositoryManager({ onRepositoryChange }: RepositoryMana
     }
 
     const handleClone = async () => {
-        if (!cloneUrl.trim()) return
+        if (!cloneUrl.trim() || !cloneToPath.trim()) return
 
         setIsCloning(true)
         try {
-            const response = await axios.post('/api/clone', {
+            const response = await axios.post('/api/clone-to-path', {
                 git_url: cloneUrl,
+                clone_to_path: cloneToPath,
                 name: repoName || undefined
             })
 
             if (response.data.success) {
                 setCloneUrl('')
                 setRepoName('')
+                setCloneToPath('')
                 setShowCloneForm(false)
                 await fetchRepositories()
             }
         } catch (error: any) {
             console.error('Clone failed:', error)
             alert(`Clone failed: ${error.response?.data?.detail || error.message}`)
+        } finally {
+            setIsCloning(false)
+        }
+    }
+
+    const handleAddLocal = async () => {
+        if (!localPath.trim()) return
+
+        setIsCloning(true)
+        try {
+            const response = await axios.post('/api/add-local', {
+                local_path: localPath,
+                name: localRepoName || undefined
+            })
+
+            if (response.data.success) {
+                setLocalPath('')
+                setLocalRepoName('')
+                setShowLocalForm(false)
+                await fetchRepositories()
+            }
+        } catch (error: any) {
+            console.error('Add local repository failed:', error)
+            alert(`Add local repository failed: ${error.response?.data?.detail || error.message}`)
         } finally {
             setIsCloning(false)
         }
@@ -83,17 +112,21 @@ export default function RepositoryManager({ onRepositoryChange }: RepositoryMana
         }
     }
 
-    const handleDelete = async (repoId: string) => {
-        if (!confirm('Are you sure you want to delete this repository?')) return
+    const handleDelete = async (repoId: string, repoName: string, isLocal: boolean = false) => {
+        const confirmMessage = `Are you sure you want to permanently delete "${repoName}"?\n\nThis will:\n• Remove the repository from the list\n• Delete ALL cloned files from your computer\n• Remove the entire folder and its contents\n• This action cannot be undone`
+
+        if (!confirm(confirmMessage)) return
 
         try {
             const response = await axios.delete(`/api/repository/${repoId}`)
             if (response.data.success) {
                 await fetchRepositories()
+                alert(`✅ Repository "${repoName}" has been completely removed\n\n📁 All files and folders have been deleted from your computer`)
             }
         } catch (error: any) {
             console.error('Failed to delete repository:', error)
-            alert(`Failed to delete repository: ${error.response?.data?.detail || error.message}`)
+            const errorMsg = error.response?.data?.detail || error.message
+            alert(`❌ Failed to delete repository: ${errorMsg}`)
         }
     }
 
@@ -114,15 +147,33 @@ export default function RepositoryManager({ onRepositoryChange }: RepositoryMana
                     <h2 className="text-2xl font-bold">Repository Manager</h2>
                 </div>
 
-                <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => setShowCloneForm(!showCloneForm)}
-                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg font-medium transition-colors"
-                >
-                    <Plus className="w-5 h-5" />
-                    Clone Repository
-                </motion.button>
+                <div className="flex items-center gap-2">
+                    <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => {
+                            setShowCloneForm(!showCloneForm)
+                            setShowLocalForm(false)
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg font-medium transition-colors"
+                    >
+                        <Plus className="w-5 h-5" />
+                        Clone & Monitor
+                    </motion.button>
+
+                    <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => {
+                            setShowLocalForm(!showLocalForm)
+                            setShowCloneForm(false)
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-medium transition-colors"
+                    >
+                        <Folder className="w-5 h-5" />
+                        Add Local
+                    </motion.button>
+                </div>
             </div>
 
             {/* Clone Form */}
@@ -134,7 +185,10 @@ export default function RepositoryManager({ onRepositoryChange }: RepositoryMana
                         exit={{ opacity: 0, height: 0 }}
                         className="mb-6 p-4 bg-black/20 rounded-lg border border-white/10"
                     >
-                        <h3 className="text-lg font-semibold mb-4">Clone New Repository</h3>
+                        <h3 className="text-lg font-semibold mb-4">Clone & Monitor Repository</h3>
+                        <p className="text-sm text-gray-400 mb-4">
+                            Clone a repository and specify where you'll actually work on it
+                        </p>
 
                         <div className="space-y-4">
                             <div>
@@ -146,6 +200,20 @@ export default function RepositoryManager({ onRepositoryChange }: RepositoryMana
                                     placeholder="https://github.com/username/repository.git"
                                     className="w-full p-3 bg-black/30 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-purple-400"
                                 />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Clone To Path *</label>
+                                <input
+                                    type="text"
+                                    value={cloneToPath}
+                                    onChange={(e) => setCloneToPath(e.target.value)}
+                                    placeholder="C:\Users\YourName\Projects\my-project"
+                                    className="w-full p-3 bg-black/30 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-purple-400"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Where to clone and monitor the repository (your actual working directory)
+                                </p>
                             </div>
 
                             <div>
@@ -164,7 +232,7 @@ export default function RepositoryManager({ onRepositoryChange }: RepositoryMana
                                     whileHover={{ scale: 1.05 }}
                                     whileTap={{ scale: 0.95 }}
                                     onClick={handleClone}
-                                    disabled={!cloneUrl.trim() || isCloning}
+                                    disabled={!cloneUrl.trim() || !cloneToPath.trim() || isCloning}
                                     className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-medium transition-colors"
                                 >
                                     {isCloning ? (
@@ -184,6 +252,82 @@ export default function RepositoryManager({ onRepositoryChange }: RepositoryMana
                                     whileHover={{ scale: 1.05 }}
                                     whileTap={{ scale: 0.95 }}
                                     onClick={() => setShowCloneForm(false)}
+                                    className="flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg font-medium transition-colors"
+                                >
+                                    <X className="w-4 h-4" />
+                                    Cancel
+                                </motion.button>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Add Local Repository Form */}
+            <AnimatePresence>
+                {showLocalForm && (
+                    <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="mb-6 p-4 bg-black/20 rounded-lg border border-white/10"
+                    >
+                        <h3 className="text-lg font-semibold mb-4">Add Local Repository</h3>
+                        <p className="text-sm text-gray-400 mb-4">
+                            Connect to an existing Git repository on your computer
+                        </p>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Local Path *</label>
+                                <input
+                                    type="text"
+                                    value={localPath}
+                                    onChange={(e) => setLocalPath(e.target.value)}
+                                    placeholder="C:\Users\YourName\Projects\my-project"
+                                    className="w-full p-3 bg-black/30 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-green-400"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Full path to your existing Git repository folder
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Repository Name (Optional)</label>
+                                <input
+                                    type="text"
+                                    value={localRepoName}
+                                    onChange={(e) => setLocalRepoName(e.target.value)}
+                                    placeholder="my-local-project"
+                                    className="w-full p-3 bg-black/30 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-green-400"
+                                />
+                            </div>
+
+                            <div className="flex gap-3">
+                                <motion.button
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={handleAddLocal}
+                                    disabled={!localPath.trim() || isCloning}
+                                    className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-medium transition-colors"
+                                >
+                                    {isCloning ? (
+                                        <>
+                                            <Folder className="w-4 h-4 animate-pulse" />
+                                            Adding...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Folder className="w-4 h-4" />
+                                            Add Repository
+                                        </>
+                                    )}
+                                </motion.button>
+
+                                <motion.button
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={() => setShowLocalForm(false)}
                                     className="flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg font-medium transition-colors"
                                 >
                                     <X className="w-4 h-4" />
@@ -223,6 +367,16 @@ export default function RepositoryManager({ onRepositoryChange }: RepositoryMana
                                                 Active
                                             </span>
                                         )}
+                                        {repo.is_local && (
+                                            <span className="px-2 py-1 bg-blue-500 text-white text-xs rounded-full">
+                                                Local
+                                            </span>
+                                        )}
+                                        {repo.is_clone_to_path && (
+                                            <span className="px-2 py-1 bg-green-500 text-white text-xs rounded-full">
+                                                Cloned
+                                            </span>
+                                        )}
                                         {!repo.exists && (
                                             <span className="px-2 py-1 bg-red-500 text-white text-xs rounded-full">
                                                 Missing
@@ -254,31 +408,41 @@ export default function RepositoryManager({ onRepositoryChange }: RepositoryMana
                                 </div>
 
                                 <div className="flex items-center gap-2">
-                                    {!repo.is_active && repo.exists && (
-                                        <motion.button
-                                            whileHover={{ scale: 1.05 }}
-                                            whileTap={{ scale: 0.95 }}
-                                            onClick={() => handleSetActive(repo.id)}
-                                            className="flex items-center gap-1 px-3 py-1 bg-green-600 hover:bg-green-700 rounded text-sm font-medium transition-colors"
-                                        >
-                                            <Check className="w-4 h-4" />
-                                            Set Active
-                                        </motion.button>
-                                    )}
+                                    <motion.button
+                                        whileHover={{ scale: 1.05 }}
+                                        whileTap={{ scale: 0.95 }}
+                                        onClick={() => handleSetActive(repo.id)}
+                                        disabled={repo.is_active || !repo.exists}
+                                        className={`flex items-center gap-1 px-3 py-1 rounded text-sm font-medium transition-colors ${repo.is_active
+                                                ? 'bg-green-500 cursor-default opacity-75'
+                                                : !repo.exists
+                                                    ? 'bg-gray-500 cursor-not-allowed opacity-50'
+                                                    : 'bg-green-600 hover:bg-green-700'
+                                            }`}
+                                        title={
+                                            repo.is_active
+                                                ? "Currently active repository"
+                                                : !repo.exists
+                                                    ? "Repository files missing"
+                                                    : "Set as active repository"
+                                        }
+                                    >
+                                        <Check className="w-4 h-4" />
+                                        {repo.is_active ? 'Active' : 'Set Active'}
+                                    </motion.button>
 
                                     <motion.button
-                                        whileHover={{ scale: repo.is_active ? 1 : 1.05 }}
-                                        whileTap={{ scale: repo.is_active ? 1 : 0.95 }}
-                                        onClick={() => handleDelete(repo.id)}
-                                        disabled={repo.is_active}
-                                        className={`flex items-center gap-1 px-3 py-1 rounded text-sm font-medium transition-colors ${repo.is_active
-                                            ? 'bg-gray-500 cursor-not-allowed opacity-50'
-                                            : 'bg-red-600 hover:bg-red-700'
-                                            }`}
-                                        title={repo.is_active ? "Cannot delete active repository" : "Delete cloned repository"}
+                                        whileHover={{ scale: 1.05 }}
+                                        whileTap={{ scale: 0.95 }}
+                                        onClick={() => handleDelete(repo.id, getRepoDisplayName(repo), repo.is_local)}
+                                        className="flex items-center gap-1 px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-sm font-medium transition-colors"
+                                        title={repo.is_local 
+                                            ? "Remove from list (files will remain on your computer)"
+                                            : "Permanently delete this repository and all its files"
+                                        }
                                     >
                                         <Trash2 className="w-4 h-4" />
-                                        Remove Clone
+                                        {repo.is_local ? 'Remove' : 'Delete'}
                                     </motion.button>
                                 </div>
                             </div>
@@ -288,4 +452,5 @@ export default function RepositoryManager({ onRepositoryChange }: RepositoryMana
             </div>
         </motion.div>
     )
+
 }

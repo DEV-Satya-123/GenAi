@@ -162,6 +162,17 @@ class RunResponse(BaseModel):
     result: Optional[dict] = None
 
 
+class AddLocalRequest(BaseModel):
+    local_path: str
+    name: str = None
+
+
+class CloneToPathRequest(BaseModel):
+    git_url: str
+    clone_to_path: str
+    name: str = None
+
+
 class CloneRequest(BaseModel):
     git_url: str
     name: str = None
@@ -190,19 +201,46 @@ async def root():
 async def get_status():
     """Get current repository status"""
     try:
-        agent = GitAutomationAgent(REPO_PATH)
+        global current_repo_path
+        
+        # Use current active repo path, fallback to default if not set
+        repo_path = current_repo_path if current_repo_path else REPO_PATH
+        
+        # Check if the repository path exists
+        if not os.path.exists(repo_path):
+            print(f"⚠️ Repository path does not exist: {repo_path}")
+            # Reset to default if current path doesn't exist
+            current_repo_path = REPO_PATH
+            repo_path = REPO_PATH
+            
+            # If default also doesn't exist, return a safe default response
+            if not os.path.exists(repo_path):
+                return StatusResponse(
+                    has_changes=False,
+                    current_branch="unknown",
+                    repo_path=repo_path,
+                    timestamp=datetime.now().isoformat()
+                )
+        
+        agent = GitAutomationAgent(repo_path)
         has_changes = agent.git_tools.has_changes()
         branch = agent.git_tools.get_current_branch()
         
         return StatusResponse(
             has_changes=has_changes,
             current_branch=branch,
-            repo_path=REPO_PATH,
+            repo_path=repo_path,
             timestamp=datetime.now().isoformat()
         )
     except Exception as e:
         print(f"Error in get_status: {e}")
-        raise HTTPException(status_code=500, detail=f"Error getting status: {str(e)}")
+        # Return a safe default response instead of raising an error
+        return StatusResponse(
+            has_changes=False,
+            current_branch="error",
+            repo_path=current_repo_path if current_repo_path else REPO_PATH,
+            timestamp=datetime.now().isoformat()
+        )
 
 
 @app.get("/api/repositories")
@@ -237,6 +275,94 @@ async def get_repositories():
             "active_repo_path": current_repo_path
         }
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/clone-to-path")
+async def clone_to_path_repository(request: CloneToPathRequest):
+    """Clone a Git repository to a specific path where you'll work on it"""
+    try:
+        git_url = request.git_url.strip()
+        clone_to_path = request.clone_to_path.strip()
+        
+        # Normalize the clone path
+        clone_to_path = os.path.abspath(clone_to_path)
+        
+        # Check if parent directory exists
+        parent_dir = os.path.dirname(clone_to_path)
+        if not os.path.exists(parent_dir):
+            raise HTTPException(status_code=400, detail=f"Parent directory does not exist: {parent_dir}")
+        
+        # Check if target path already exists
+        if os.path.exists(clone_to_path):
+            raise HTTPException(status_code=400, detail=f"Path already exists: {clone_to_path}")
+        
+        # Extract repo name from URL
+        if request.name:
+            repo_name = request.name
+        else:
+            repo_name = git_url.split('/')[-1].replace('.git', '')
+        
+        # Create unique repo ID
+        repo_id = f"{repo_name}_{uuid.uuid4().hex[:8]}"
+        
+        await ws_manager.broadcast({
+            "type": "clone_started",
+            "message": f"Cloning repository to: {clone_to_path}"
+        })
+        
+        # Clone the repository to the specified path
+        try:
+            result = subprocess.run(
+                ["git", "clone", git_url, clone_to_path],
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout
+            )
+            
+            if result.returncode != 0:
+                raise Exception(f"Git clone failed: {result.stderr}")
+            
+            # Save repository info
+            repos = load_repositories()
+            repos[repo_id] = {
+                "id": repo_id,
+                "name": repo_name,
+                "git_url": git_url,
+                "path": clone_to_path,  # This is where the user will actually work
+                "cloned_at": datetime.now().isoformat(),
+                "is_active": False,
+                "is_clone_to_path": True  # Mark as clone-to-path repository
+            }
+            save_repositories(repos)
+            
+            await ws_manager.broadcast({
+                "type": "clone_complete",
+                "message": f"Repository cloned successfully to: {clone_to_path}",
+                "repo_id": repo_id
+            })
+            
+            return {
+                "success": True,
+                "message": "Repository cloned successfully to your specified path",
+                "repo_id": repo_id,
+                "repo_path": clone_to_path
+            }
+            
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status_code=408, detail="Clone operation timed out")
+        except Exception as e:
+            # Clean up failed clone
+            if os.path.exists(clone_to_path):
+                import shutil
+                shutil.rmtree(clone_to_path, ignore_errors=True)
+            raise HTTPException(status_code=500, detail=f"Clone failed: {str(e)}")
+            
+    except Exception as e:
+        await ws_manager.broadcast({
+            "type": "clone_error",
+            "message": f"Clone failed: {str(e)}"
+        })
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -315,6 +441,96 @@ async def clone_repository(request: CloneRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/add-local")
+async def add_local_repository(request: AddLocalRequest):
+    """Add an existing local Git repository"""
+    try:
+        local_path = request.local_path.strip()
+        
+        # Normalize the path
+        local_path = os.path.abspath(local_path)
+        
+        # Check if path exists
+        if not os.path.exists(local_path):
+            raise HTTPException(status_code=400, detail=f"Path does not exist: {local_path}")
+        
+        # Check if it's a directory
+        if not os.path.isdir(local_path):
+            raise HTTPException(status_code=400, detail=f"Path is not a directory: {local_path}")
+        
+        # Check if it's a Git repository
+        git_dir = os.path.join(local_path, '.git')
+        if not os.path.exists(git_dir):
+            raise HTTPException(status_code=400, detail=f"Not a Git repository (no .git folder found): {local_path}")
+        
+        await ws_manager.broadcast({
+            "type": "local_add_started",
+            "message": f"Adding local repository: {local_path}"
+        })
+        
+        # Get repository info
+        try:
+            from tools.git_tools import GitTools
+            git_tools = GitTools(local_path)
+            
+            # Get remote URL if available
+            try:
+                result = subprocess.run(
+                    ["git", "remote", "get-url", "origin"],
+                    cwd=local_path,
+                    capture_output=True,
+                    text=True
+                )
+                git_url = result.stdout.strip() if result.returncode == 0 else "local-repository"
+            except:
+                git_url = "local-repository"
+            
+            # Extract repo name
+            if request.name:
+                repo_name = request.name
+            else:
+                repo_name = os.path.basename(local_path)
+            
+            # Create unique repo ID
+            repo_id = f"{repo_name}_{uuid.uuid4().hex[:8]}"
+            
+            # Save repository info
+            repos = load_repositories()
+            repos[repo_id] = {
+                "id": repo_id,
+                "name": repo_name,
+                "git_url": git_url,
+                "path": local_path,
+                "cloned_at": datetime.now().isoformat(),
+                "is_active": False,
+                "is_local": True  # Mark as local repository
+            }
+            save_repositories(repos)
+            
+            await ws_manager.broadcast({
+                "type": "local_add_complete",
+                "message": f"Local repository added successfully: {repo_name}",
+                "repo_id": repo_id
+            })
+            
+            return {
+                "success": True,
+                "message": "Local repository added successfully",
+                "repo_id": repo_id,
+                "repo_path": local_path
+            }
+            
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to analyze repository: {str(e)}")
+            
+    except Exception as e:
+        await ws_manager.broadcast({
+            "type": "local_add_error",
+            "message": f"Failed to add local repository: {str(e)}"
+        })
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/set-active-repo")
 async def set_active_repository(request: SetActiveRepoRequest):
     """Set the active repository for the agent"""
@@ -357,7 +573,7 @@ async def set_active_repository(request: SetActiveRepoRequest):
 
 @app.delete("/api/repository/{repo_id}")
 async def delete_repository(repo_id: str):
-    """Delete a cloned repository"""
+    """Delete a cloned repository and completely remove all its files"""
     try:
         repos = load_repositories()
         
@@ -365,16 +581,136 @@ async def delete_repository(repo_id: str):
             raise HTTPException(status_code=404, detail="Repository not found")
         
         repo_info = repos[repo_id]
+        is_local = repo_info.get("is_local", False)
+        is_clone_to_path = repo_info.get("is_clone_to_path", False)
         
-        # Don't delete if it's the active repo
+        # If deleting the active repo, reset to default
         global current_repo_path
-        if repo_info["path"] == current_repo_path:
-            raise HTTPException(status_code=400, detail="Cannot delete active repository")
+        was_active = repo_info["path"] == current_repo_path
+        if was_active:
+            current_repo_path = REPO_PATH  # Reset to default
+            print(f"⚠️ Deleted active repository, reset to default: {REPO_PATH}")
         
-        # Remove directory
-        if os.path.exists(repo_info["path"]):
-            import shutil
-            shutil.rmtree(repo_info["path"], ignore_errors=True)
+        # Handle deletion based on repository type
+        if is_local:
+            # For local repositories, only remove from config, don't delete files
+            print(f"📁 Removing local repository from list (keeping files): {repo_info['path']}")
+        elif is_clone_to_path:
+            # For clone-to-path repositories, delete the actual folder
+            repo_path = repo_info["path"]
+            print(f"🗑️ Attempting to delete cloned repository folder: {repo_path}")
+            
+            if os.path.exists(repo_path):
+                import shutil
+                try:
+                    # Get folder size for logging
+                    total_size = 0
+                    for dirpath, dirnames, filenames in os.walk(repo_path):
+                        for filename in filenames:
+                            filepath = os.path.join(dirpath, filename)
+                            try:
+                                total_size += os.path.getsize(filepath)
+                            except:
+                                pass
+                    
+                    size_mb = total_size / (1024 * 1024)
+                    print(f"📁 Folder size: {size_mb:.2f} MB")
+                    
+                    # Force remove all files and subdirectories
+                    shutil.rmtree(repo_path, ignore_errors=False)
+                    print(f"✅ Successfully deleted repository folder: {repo_path}")
+                    
+                    # Verify deletion
+                    if os.path.exists(repo_path):
+                        print(f"⚠️ Warning: Folder still exists after deletion attempt")
+                        # Try again with ignore_errors=True
+                        shutil.rmtree(repo_path, ignore_errors=True)
+                        if os.path.exists(repo_path):
+                            raise Exception(f"Failed to completely remove folder: {repo_path}")
+                    else:
+                        print(f"✅ Confirmed: Folder completely removed from disk")
+                        
+                except PermissionError as e:
+                    print(f"⚠️ Permission error deleting files: {e}")
+                    print(f"🔧 Trying alternative deletion method...")
+                    
+                    # Try to change permissions and delete again
+                    try:
+                        import stat
+                        def handle_remove_readonly(func, path, exc):
+                            os.chmod(path, stat.S_IWRITE)
+                            func(path)
+                        
+                        shutil.rmtree(repo_path, onerror=handle_remove_readonly)
+                        print(f"✅ Successfully deleted with permission fix: {repo_path}")
+                    except Exception as e2:
+                        print(f"❌ Still failed after permission fix: {e2}")
+                        raise HTTPException(status_code=500, detail=f"Failed to delete repository files due to permissions: {str(e)}")
+                        
+                except Exception as e:
+                    print(f"❌ Error deleting repository files: {e}")
+                    raise HTTPException(status_code=500, detail=f"Failed to delete repository files: {str(e)}")
+            else:
+                print(f"⚠️ Repository folder does not exist: {repo_path}")
+                print(f"📍 Expected location: {os.path.abspath(repo_path)}")
+        else:
+            # For old-style cloned repositories (in cloned-repos folder), delete them too
+            repo_path = repo_info["path"]
+            print(f"🗑️ Attempting to delete repository folder: {repo_path}")
+            
+            if os.path.exists(repo_path):
+                import shutil
+                try:
+                    # Get folder size for logging
+                    total_size = 0
+                    for dirpath, dirnames, filenames in os.walk(repo_path):
+                        for filename in filenames:
+                            filepath = os.path.join(dirpath, filename)
+                            try:
+                                total_size += os.path.getsize(filepath)
+                            except:
+                                pass
+                    
+                    size_mb = total_size / (1024 * 1024)
+                    print(f"📁 Folder size: {size_mb:.2f} MB")
+                    
+                    # Force remove all files and subdirectories
+                    shutil.rmtree(repo_path, ignore_errors=False)
+                    print(f"✅ Successfully deleted repository folder: {repo_path}")
+                    
+                    # Verify deletion
+                    if os.path.exists(repo_path):
+                        print(f"⚠️ Warning: Folder still exists after deletion attempt")
+                        # Try again with ignore_errors=True
+                        shutil.rmtree(repo_path, ignore_errors=True)
+                        if os.path.exists(repo_path):
+                            raise Exception(f"Failed to completely remove folder: {repo_path}")
+                    else:
+                        print(f"✅ Confirmed: Folder completely removed from disk")
+                        
+                except PermissionError as e:
+                    print(f"⚠️ Permission error deleting files: {e}")
+                    print(f"🔧 Trying alternative deletion method...")
+                    
+                    # Try to change permissions and delete again
+                    try:
+                        import stat
+                        def handle_remove_readonly(func, path, exc):
+                            os.chmod(path, stat.S_IWRITE)
+                            func(path)
+                        
+                        shutil.rmtree(repo_path, onerror=handle_remove_readonly)
+                        print(f"✅ Successfully deleted with permission fix: {repo_path}")
+                    except Exception as e2:
+                        print(f"❌ Still failed after permission fix: {e2}")
+                        raise HTTPException(status_code=500, detail=f"Failed to delete repository files due to permissions: {str(e)}")
+                        
+                except Exception as e:
+                    print(f"❌ Error deleting repository files: {e}")
+                    raise HTTPException(status_code=500, detail=f"Failed to delete repository files: {str(e)}")
+            else:
+                print(f"⚠️ Repository folder does not exist: {repo_path}")
+                print(f"📍 Expected location: {os.path.abspath(repo_path)}")
         
         # Remove from config
         del repos[repo_id]
@@ -382,16 +718,19 @@ async def delete_repository(repo_id: str):
         
         await ws_manager.broadcast({
             "type": "repo_deleted",
-            "message": f"Repository deleted: {repo_info['name']}",
+            "message": f"Repository '{repo_info['name']}' deleted successfully" + (" (was active)" if was_active else ""),
             "repo_id": repo_id
         })
         
+        print(f"✅ Repository '{repo_info['name']}' completely removed from system")
+        
         return {
             "success": True,
-            "message": "Repository deleted successfully"
+            "message": f"Repository '{repo_info['name']}' and all its files have been deleted successfully"
         }
         
     except Exception as e:
+        print(f"❌ Error deleting repository: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -399,7 +738,16 @@ async def delete_repository(repo_id: str):
 async def run_agent():
     """Run the automation agent with WebSocket interaction"""
     try:
-        agent = GitAutomationAgent(REPO_PATH)
+        global current_repo_path
+        
+        # Use current active repo path, fallback to default if not set
+        repo_path = current_repo_path if current_repo_path else REPO_PATH
+        
+        # Check if the repository path exists
+        if not os.path.exists(repo_path):
+            raise HTTPException(status_code=400, detail=f"Repository path does not exist: {repo_path}")
+        
+        agent = GitAutomationAgent(repo_path)
         
         # Store the agent globally for approval handling
         global current_agent, current_workflow_state
@@ -418,6 +766,10 @@ async def run_agent():
                 current_workflow_state = result
                 
                 # If we have a commit message, show approval modal
+                print(f"🔍 Debug - result keys: {result.keys()}")
+                print(f"🔍 Debug - has commit_message: {bool(result.get('commit_message'))}")
+                print(f"🔍 Debug - committed: {result.get('committed')}")
+                
                 if result.get("commit_message") and not result.get("committed"):
                     await ws_manager.broadcast({
                         "type": "approval_required",
@@ -425,6 +777,8 @@ async def run_agent():
                         "data": {
                             "type": "commit_approval",
                             "commit_message": result["commit_message"],
+                            "security_summary": result.get("security_summary", ""),
+                            "security_level": result.get("security_level", "safe"),
                             "instruction": "Please approve, reject, or edit the commit message"
                         }
                     })
@@ -458,6 +812,10 @@ async def run_agent():
             current_workflow_state = result
             
             # If we have a commit message, show approval modal
+            print(f"🔍 Debug - result keys: {result.keys()}")
+            print(f"🔍 Debug - has commit_message: {bool(result.get('commit_message'))}")
+            print(f"🔍 Debug - committed: {result.get('committed')}")
+            
             if result.get("commit_message") and not result.get("committed"):
                 await ws_manager.broadcast({
                     "type": "approval_required",
@@ -465,6 +823,8 @@ async def run_agent():
                     "data": {
                         "type": "commit_approval",
                         "commit_message": result["commit_message"],
+                        "security_summary": result.get("security_summary", ""),
+                        "security_level": result.get("security_level", "safe"),
                         "instruction": "Please approve, reject, or edit the commit message"
                     }
                 })
@@ -495,54 +855,7 @@ async def run_agent():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Global variables to track current workflow
-current_agent = None
-current_workflow_state = None
 
-
-# Global variables to track current workflow
-current_agent = None
-current_thread_id = None
-current_repo_path = REPO_PATH  # Initialize with default repo path
-
-# Repository management
-CLONED_REPOS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cloned-repos")
-REPOS_CONFIG_FILE = os.path.join(CLONED_REPOS_DIR, "repos.json")
-
-# Ensure cloned repos directory exists
-os.makedirs(CLONED_REPOS_DIR, exist_ok=True)
-
-
-def load_repositories():
-    """Load repository list from config file"""
-    if os.path.exists(REPOS_CONFIG_FILE):
-        try:
-            with open(REPOS_CONFIG_FILE, 'r') as f:
-                return json.load(f)
-        except:
-            return {}
-    return {}
-
-
-def save_repositories(repos):
-    """Save repository list to config file"""
-    with open(REPOS_CONFIG_FILE, 'w') as f:
-        json.dump(repos, f, indent=2)
-
-
-class CloneRequest(BaseModel):
-    git_url: str
-    name: str = None
-
-
-class SetActiveRepoRequest(BaseModel):
-    repo_id: str
-
-
-class ApprovalRequest(BaseModel):
-    action: str
-    commit_message: str = None
-    approval_type: str = None
 
 
 @app.post("/api/approve")
@@ -697,7 +1010,12 @@ async def handle_approval(request: ApprovalRequest):
 async def get_workflow_status(thread_id: str):
     """Get the current status of a workflow"""
     try:
-        agent = GitAutomationAgent(REPO_PATH)
+        global current_repo_path
+        
+        # Use current active repo path, fallback to default if not set
+        repo_path = current_repo_path if current_repo_path else REPO_PATH
+        
+        agent = GitAutomationAgent(repo_path)
         
         state = agent.get_current_state(thread_id)
         if not state:

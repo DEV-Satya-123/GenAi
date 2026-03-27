@@ -17,11 +17,15 @@ export default function Dashboard({ onRunStart, onRunEnd }: DashboardProps) {
         isOpen: boolean
         type: 'commit' | 'push'
         message: string
+        securitySummary?: string
+        securityLevel?: string
         data?: any
     }>({
         isOpen: false,
         type: 'commit',
-        message: ''
+        message: '',
+        securitySummary: '',
+        securityLevel: 'safe'
     })
 
     useEffect(() => {
@@ -120,18 +124,20 @@ export default function Dashboard({ onRunStart, onRunEnd }: DashboardProps) {
                 console.log('🔔 Approval type:', data.approval_type)
                 console.log('🔔 Data:', data.data)
 
-                const modalType = data.approval_type === 'push_approval' ? 'push' : 'commit'
+                const modalType: 'commit' | 'push' = data.approval_type === 'push_approval' ? 'push' : 'commit'
                 console.log('🔔 Setting modal type to:', modalType)
 
                 const newModalState = {
                     isOpen: true,
                     type: modalType,
                     message: data.data.commit_message || 'Approval needed',
+                    securitySummary: data.data.security_summary || '',
+                    securityLevel: data.data.security_level || 'safe',
                     data: data.data
                 }
-                
+
                 console.log('🔔 New modal state:', newModalState)
-                
+
                 // Small delay to ensure modal state updates properly
                 setTimeout(() => {
                     setApprovalModal(newModalState)
@@ -299,6 +305,8 @@ export default function Dashboard({ onRunStart, onRunEnd }: DashboardProps) {
                 isOpen={approvalModal.isOpen}
                 type={approvalModal.type}
                 message={approvalModal.message}
+                securitySummary={approvalModal.securitySummary}
+                securityLevel={approvalModal.securityLevel}
                 onApprove={(editedMessage) => handleApproval(true, editedMessage)}
                 onReject={() => handleApproval(false)}
                 onClose={() => setApprovalModal({ ...approvalModal, isOpen: false })}

@@ -6,6 +6,8 @@ interface ApprovalModalProps {
   isOpen: boolean
   type: 'commit' | 'push'
   message: string
+  securitySummary?: string
+  securityLevel?: string
   onApprove: (editedMessage?: string) => void
   onReject: () => void
   onClose?: () => void
@@ -15,6 +17,8 @@ export default function ApprovalModal({
   isOpen,
   type,
   message,
+  securitySummary,
+  securityLevel,
   onApprove,
   onReject,
   onClose
@@ -125,6 +129,37 @@ export default function ApprovalModal({
                   <p className="text-sm text-gray-400 mt-2">
                     Commit message: <code className="text-green-400">{message}</code>
                   </p>
+                </div>
+              </div>
+            )}
+
+            {/* Security Analysis Section */}
+            {type === 'commit' && securitySummary && (
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                  🛡️ Security Analysis
+                  {securityLevel === 'blocked' && (
+                    <span className="px-2 py-1 bg-red-500 text-white text-xs rounded-full">BLOCKED</span>
+                  )}
+                  {securityLevel === 'critical' && (
+                    <span className="px-2 py-1 bg-orange-500 text-white text-xs rounded-full">CRITICAL</span>
+                  )}
+                  {securityLevel === 'warning' && (
+                    <span className="px-2 py-1 bg-yellow-500 text-black text-xs rounded-full">WARNING</span>
+                  )}
+                  {securityLevel === 'safe' && (
+                    <span className="px-2 py-1 bg-green-500 text-white text-xs rounded-full">SAFE</span>
+                  )}
+                </h3>
+                <div className={`p-4 border rounded-lg ${
+                  securityLevel === 'blocked' ? 'bg-red-900/20 border-red-500/50' :
+                  securityLevel === 'critical' ? 'bg-orange-900/20 border-orange-500/50' :
+                  securityLevel === 'warning' ? 'bg-yellow-900/20 border-yellow-500/50' :
+                  'bg-green-900/20 border-green-500/50'
+                }`}>
+                  <pre className="text-sm whitespace-pre-wrap text-gray-300">
+                    {securitySummary}
+                  </pre>
                 </div>
               </div>
             )}

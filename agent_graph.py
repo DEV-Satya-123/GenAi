@@ -101,7 +101,20 @@ class GitAutomationAgent:
     def generate_commit_message(self, state: AgentState) -> AgentState:
         print("🤖 Generating commit message with AI...")
         try:
-            commit_message = self.gemini_client.generate_commit_message(state["diff"])
+            # Get security analysis
+            print("🛡️ Running security analysis...")
+            issues, security_level, security_summary = self.git_tools.get_security_analysis()
+            
+            # Store security info in state
+            state["security_issues"] = issues
+            state["security_level"] = security_level
+            state["security_summary"] = security_summary
+            
+            print(f"🔍 Security check: {security_level.value}")
+            
+            # Use the focused diff for better commit message generation
+            commit_diff = self.git_tools.get_commit_diff()
+            commit_message = self.gemini_client.generate_commit_message(commit_diff, security_summary)
             state["commit_message"] = commit_message
             print(f"✨ Generated: {commit_message}")
         except Exception as e:
@@ -325,10 +338,19 @@ class GitAutomationAgent:
             diff = self.git_tools.get_diff()
             result["diff"] = diff
             
-            # Step 3: Generate commit message
+            # Step 3: Generate commit message with security analysis
             print("🤖 Generating commit message with AI...")
-            commit_message = self.gemini_client.generate_commit_message(diff)
+            print("🛡️ Running security analysis...")
+            issues, security_level, security_summary = self.git_tools.get_security_analysis()
+            
+            print(f"🔍 Security check: {security_level.value}")
+            
+            commit_diff = self.git_tools.get_commit_diff()
+            commit_message = self.gemini_client.generate_commit_message(commit_diff, security_summary)
             result["commit_message"] = commit_message
+            result["security_issues"] = issues
+            result["security_level"] = security_level.value  # Convert enum to string
+            result["security_summary"] = security_summary
             print(f"✨ Generated: {commit_message}")
             
             # Stop here for approval - don't auto-commit yet

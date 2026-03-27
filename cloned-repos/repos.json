@@ -1,10 +1,11 @@
 {
-  "SpringBoot_With_RabbitMQ_7074cda6": {
-    "id": "SpringBoot_With_RabbitMQ_7074cda6",
-    "name": "SpringBoot_With_RabbitMQ",
-    "git_url": "https://github.com/Satyabrata-123/SpringBoot_With_RabbitMQ.git",
-    "path": "D:\\GITHUB\\ai_git_agent\\cloned-repos\\SpringBoot_With_RabbitMQ_7074cda6",
-    "cloned_at": "2026-03-26T10:47:05.450468",
-    "is_active": true
+  "ai_git_agent_5c081ac3": {
+    "id": "ai_git_agent_5c081ac3",
+    "name": "ai_git_agent",
+    "git_url": "https://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v@github.com/DEV-Satya-123/GenAi.git",
+    "path": "D:\\GITHUB\\ai_git_agent",
+    "cloned_at": "2026-03-27T19:24:40.023291",
+    "is_active": true,
+    "is_local": true
   }
 }
