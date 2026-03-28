@@ -1,8 +1,8 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel, Field
 from config import GEMINI_API_KEY
+import json
 
 
 class CommitMessage(BaseModel):
@@ -16,7 +16,6 @@ class GeminiClient:
             google_api_key=GEMINI_API_KEY,
             temperature=0.3
         )
-        self.parser = PydanticOutputParser(pydantic_object=CommitMessage)
     
     def generate_commit_message(self, diff: str, security_summary: str = None) -> str:
         prompt = PromptTemplate(
@@ -51,12 +50,10 @@ Git Diff:
 
 {security_info}
 
-Generate ONE commit message that captures the essence of these changes:
-
-{format_instructions}
+Return ONLY a JSON object with this format:
+{{"commit_message": "your commit message here"}}
 """,
-            input_variables=["diff", "security_info"],
-            partial_variables={"format_instructions": self.parser.get_format_instructions()}
+            input_variables=["diff", "security_info"]
         )
         
         # Include security information if provided
@@ -64,6 +61,24 @@ Generate ONE commit message that captures the essence of these changes:
         if security_summary:
             security_info = f"\nSECURITY ANALYSIS:\n{security_summary}\n"
         
-        chain = prompt | self.llm | self.parser
+        chain = prompt | self.llm
         result = chain.invoke({"diff": diff, "security_info": security_info})
-        return result.commit_message
+        
+        # Parse the response
+        try:
+            # Try to extract JSON from the response
+            content = result.content if hasattr(result, 'content') else str(result)
+            
+            # Find JSON in the response
+            start = content.find('{')
+            end = content.rfind('}') + 1
+            if start != -1 and end > start:
+                json_str = content[start:end]
+                parsed = json.loads(json_str)
+                return parsed.get('commit_message', content.strip())
+            else:
+                # Fallback: return the content as-is
+                return content.strip()
+        except:
+            # If parsing fails, return the raw content
+            return result.content if hasattr(result, 'content') else str(result)
