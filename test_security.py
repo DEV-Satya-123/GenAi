@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """
-Quick test script for the enhanced security scanner
+Test script for the hybrid security scanner (Custom + GitGuardian)
 """
 
+import os
 from security.security_scanner import SecurityScanner, SecurityLevel
 
-def test_enhanced_security_scanner():
-    scanner = SecurityScanner()
+def test_hybrid_security_scanner():
+    # Initialize scanner with GitGuardian API key (if available)
+    gitguardian_key = os.getenv('GITGUARDIAN_API_KEY')
+    scanner = SecurityScanner(gitguardian_api_key=gitguardian_key)
     
     # Test cases with different security issues
     test_cases = [
@@ -24,7 +27,7 @@ def test_enhanced_security_scanner():
             "files": ["src/utils.py"]
         },
         {
-            "name": "Dangerous .gitignore modification",
+            "name": "Dangerous .gitignore modification (Custom Scanner)",
             "diff": """
 --- a/.gitignore
 +++ b/.gitignore
@@ -38,7 +41,19 @@ def test_enhanced_security_scanner():
             "files": [".gitignore"]
         },
         {
-            "name": "Sensitive file being tracked",
+            "name": "Real AWS secret (GitGuardian will detect)",
+            "diff": """
++++ b/config.py
+@@ -1,3 +1,4 @@
+ DATABASE_URL = "sqlite:///app.db"
++AWS_ACCESS_KEY_ID = "AKIAIOSFODNN7EXAMPLE"
++AWS_SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+ DEBUG = True
+""",
+            "files": ["config.py"]
+        },
+        {
+            "name": "Sensitive file being tracked (Custom Scanner)",
             "diff": """
 +++ b/.env
 @@ -0,0 +1,3 @@
@@ -49,41 +64,32 @@ def test_enhanced_security_scanner():
             "files": [".env"]
         },
         {
-            "name": "Private key file added",
+            "name": "GitHub token (GitGuardian detection)",
             "diff": """
-+++ b/keys/id_rsa
-@@ -0,0 +1,5 @@
-+-----BEGIN PRIVATE KEY-----
-+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7...
-+-----END PRIVATE KEY-----
++++ b/deploy.sh
+@@ -1,3 +1,4 @@
+ #!/bin/bash
++export GITHUB_TOKEN="ghp_1234567890abcdefghijklmnopqrstuvwxyz"
+ echo "Deploying application..."
 """,
-            "files": ["keys/id_rsa"]
-        },
-        {
-            "name": "Multiple gitignore patterns removed",
-            "diff": """
---- a/.gitignore
-+++ b/.gitignore
-@@ -1,8 +1,5 @@
- node_modules/
- dist/
--.env
--.env.local
--*.key
--*.pem
- *.log
- .DS_Store
-""",
-            "files": [".gitignore"]
+            "files": ["deploy.sh"]
         }
     ]
     
-    print("🛡️ Enhanced Security Scanner Test Results")
-    print("=" * 60)
+    print("🛡️ Hybrid Security Scanner Test Results")
+    print("=" * 70)
     
-    for test_case in test_cases:
-        print(f"\n📋 Test: {test_case['name']}")
-        print("-" * 40)
+    if gitguardian_key:
+        print("🌐 GitGuardian API: ENABLED")
+    else:
+        print("ℹ️ GitGuardian API: DISABLED (set GITGUARDIAN_API_KEY to enable)")
+    
+    print("🔧 Custom Scanner: ENABLED")
+    print("=" * 70)
+    
+    for i, test_case in enumerate(test_cases, 1):
+        print(f"\n📋 Test {i}: {test_case['name']}")
+        print("-" * 50)
         
         issues, level = scanner.scan_diff(test_case['diff'], test_case['files'])
         summary = scanner.get_security_summary(issues, level)
@@ -95,9 +101,12 @@ def test_enhanced_security_scanner():
         if issues:
             print("\nDetailed Issues:")
             for issue in issues:
-                print(f"  • {issue.type}: {issue.message}")
+                scanner_type = "🌐 GitGuardian" if issue.type == 'gitguardian_detection' else "🔧 Custom"
+                print(f"  {scanner_type} • {issue.type}: {issue.message}")
                 if issue.suggestion:
                     print(f"    💡 {issue.suggestion}")
+        
+        print("\n" + "="*50)
 
 if __name__ == "__main__":
-    test_enhanced_security_scanner()
+    test_hybrid_security_scanner()

@@ -1,6 +1,8 @@
 import re
 import os
-from typing import List, Dict, Tuple
+import requests
+import asyncio
+from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 from enum import Enum
 
@@ -23,7 +25,11 @@ class SecurityIssue:
 
 
 class SecurityScanner:
-    def __init__(self):
+    def __init__(self, gitguardian_api_key: Optional[str] = None):
+        # GitGuardian API configuration
+        self.gitguardian_api_key = gitguardian_api_key or os.getenv('GITGUARDIAN_API_KEY')
+        self.gitguardian_url = "https://api.gitguardian.com/v1/scan"
+        
         # Define security patterns with their risk levels
         self.patterns = {
             # API Keys and Tokens
@@ -160,9 +166,12 @@ class SecurityScanner:
         }
 
     def scan_diff(self, diff_content: str, file_paths: List[str] = None) -> Tuple[List[SecurityIssue], SecurityLevel]:
-        """Scan git diff for security issues"""
+        """Scan git diff for security issues using both custom and GitGuardian scanning"""
         issues = []
         max_level = SecurityLevel.SAFE
+        
+        # Phase 1: Custom Scanner (Always runs - fast and unique features)
+        print("🛡️ Running custom security analysis...")
         
         # Scan file paths for sensitive files
         if file_paths:
@@ -193,6 +202,28 @@ class SecurityScanner:
         for issue in content_issues:
             if self._is_higher_level(issue.level, max_level):
                 max_level = issue.level
+        
+        # Phase 2: GitGuardian API (If available - comprehensive detection)
+        if self.gitguardian_api_key:
+            print("🌐 Running GitGuardian API analysis...")
+            try:
+                gitguardian_issues = self._scan_with_gitguardian(diff_content, file_paths or [])
+                issues.extend(gitguardian_issues)
+                for issue in gitguardian_issues:
+                    if self._is_higher_level(issue.level, max_level):
+                        max_level = issue.level
+            except Exception as e:
+                print(f"⚠️ GitGuardian API error (falling back to custom only): {e}")
+                # Add a warning but don't fail
+                issues.append(SecurityIssue(
+                    level=SecurityLevel.WARNING,
+                    type='api_fallback',
+                    message='GitGuardian API unavailable, using custom scanner only',
+                    file_path='system',
+                    suggestion='Check GitGuardian API key and network connection'
+                ))
+        else:
+            print("ℹ️ GitGuardian API key not provided, using custom scanner only")
         
         return issues, max_level
 
@@ -281,9 +312,11 @@ class SecurityScanner:
         critical = [i for i in issues if i.level == SecurityLevel.CRITICAL]
         warnings = [i for i in issues if i.level == SecurityLevel.WARNING]
         
-        # Special handling for gitignore and tracking issues
+        # Special handling for different issue types
         gitignore_issues = [i for i in issues if i.type == 'gitignore_removal']
         tracking_issues = [i for i in issues if i.type in ['newly_tracked_sensitive_file', 'potentially_sensitive_file']]
+        gitguardian_issues = [i for i in issues if i.type == 'gitguardian_detection']
+        api_issues = [i for i in issues if i.type.startswith('api_')]
         
         if blocked:
             summary_parts.append(f"🚫 BLOCKED: {len(blocked)} critical security issue(s)")
@@ -305,8 +338,31 @@ class SecurityScanner:
             for issue in tracking_issues[:2]:
                 summary_parts.append(f"   • {issue.message}")
         
-        if warnings:
+        if gitguardian_issues:
+            summary_parts.append(f"🌐 GITGUARDIAN: {len(gitguardian_issues)} advanced detection(s)")
+            for issue in gitguardian_issues[:2]:
+                summary_parts.append(f"   • {issue.message}")
+        
+        if api_issues:
+            summary_parts.append(f"🔧 API STATUS: {len(api_issues)} service issue(s)")
+            for issue in api_issues[:1]:
+                summary_parts.append(f"   • {issue.message}")
+        
+        if warnings and not (gitignore_issues or tracking_issues or gitguardian_issues or api_issues):
             summary_parts.append(f"🔍 WARNING: {len(warnings)} potential issue(s)")
+        
+        # Add scanning method info
+        has_gitguardian = any(i.type == 'gitguardian_detection' for i in issues)
+        has_custom = any(i.type not in ['gitguardian_detection', 'api_auth_error', 'api_rate_limit', 'api_timeout', 'api_fallback'] for i in issues)
+        
+        scan_methods = []
+        if has_custom:
+            scan_methods.append("Custom Scanner")
+        if has_gitguardian:
+            scan_methods.append("GitGuardian API")
+        
+        if scan_methods:
+            summary_parts.append(f"\n🔍 Scanned with: {' + '.join(scan_methods)}")
         
         # Add overall recommendation
         if overall_level == SecurityLevel.BLOCKED:
@@ -405,3 +461,121 @@ class SecurityScanner:
             return fnmatch.fnmatch(file_path, pattern) or fnmatch.fnmatch(file_path.split('/')[-1], pattern)
         else:
             return pattern in file_path or file_path.endswith(pattern)
+
+    def _scan_with_gitguardian(self, diff_content: str, file_paths: List[str]) -> List[SecurityIssue]:
+        """Scan using GitGuardian API for comprehensive secret detection"""
+        issues = []
+        
+        if not self.gitguardian_api_key:
+            return issues
+        
+        try:
+            # Prepare the request payload
+            headers = {
+                'Authorization': f'Token {self.gitguardian_api_key}',
+                'Content-Type': 'application/json'
+            }
+            
+            # Create documents for GitGuardian API
+            documents = []
+            
+            # Add diff content as a document
+            if diff_content.strip():
+                documents.append({
+                    'filename': 'git.diff',
+                    'document': diff_content
+                })
+            
+            # If no documents to scan, return empty
+            if not documents:
+                return issues
+            
+            payload = {
+                'documents': documents
+            }
+            
+            # Make API request
+            response = requests.post(
+                self.gitguardian_url,
+                json=payload,
+                headers=headers,
+                timeout=10  # 10 second timeout
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                # Process GitGuardian results
+                for doc_result in result.get('scan_results', []):
+                    for policy_break in doc_result.get('policy_breaks', []):
+                        # Map GitGuardian severity to our levels
+                        severity = policy_break.get('break_type', 'unknown')
+                        if severity in ['secret', 'high']:
+                            level = SecurityLevel.BLOCKED
+                        elif severity in ['medium', 'potential_secret']:
+                            level = SecurityLevel.CRITICAL
+                        else:
+                            level = SecurityLevel.WARNING
+                        
+                        # Extract information
+                        secret_type = policy_break.get('policy', 'Unknown Secret Type')
+                        validity = policy_break.get('validity', 'unknown')
+                        
+                        # Create issue
+                        message = f"GitGuardian: {secret_type} detected"
+                        if validity == 'valid':
+                            message += " (VALID - Active secret!)"
+                            level = SecurityLevel.BLOCKED
+                        elif validity == 'invalid':
+                            message += " (Invalid format)"
+                            level = SecurityLevel.WARNING
+                        
+                        suggestion = f"Remove {secret_type.lower()} and use secure storage"
+                        if validity == 'valid':
+                            suggestion += ". URGENT: This is an active secret that should be rotated immediately!"
+                        
+                        issues.append(SecurityIssue(
+                            level=level,
+                            type='gitguardian_detection',
+                            message=message,
+                            file_path=doc_result.get('filename', 'unknown'),
+                            suggestion=suggestion
+                        ))
+            
+            elif response.status_code == 401:
+                issues.append(SecurityIssue(
+                    level=SecurityLevel.WARNING,
+                    type='api_auth_error',
+                    message='GitGuardian API authentication failed',
+                    file_path='system',
+                    suggestion='Check your GitGuardian API key'
+                ))
+            
+            elif response.status_code == 429:
+                issues.append(SecurityIssue(
+                    level=SecurityLevel.WARNING,
+                    type='api_rate_limit',
+                    message='GitGuardian API rate limit exceeded',
+                    file_path='system',
+                    suggestion='Wait before making more requests or upgrade your GitGuardian plan'
+                ))
+            
+            else:
+                print(f"GitGuardian API returned status {response.status_code}: {response.text}")
+        
+        except requests.exceptions.Timeout:
+            issues.append(SecurityIssue(
+                level=SecurityLevel.WARNING,
+                type='api_timeout',
+                message='GitGuardian API request timed out',
+                file_path='system',
+                suggestion='Check network connection or try again later'
+            ))
+        
+        except requests.exceptions.RequestException as e:
+            print(f"GitGuardian API request failed: {e}")
+        
+        except Exception as e:
+            print(f"Unexpected error with GitGuardian API: {e}")
+        
+        return issues

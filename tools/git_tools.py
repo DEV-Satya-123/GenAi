@@ -14,7 +14,9 @@ class GitTools:
     def __init__(self, repo_path: str):
         try:
             self.repo = Repo(repo_path)
-            self.security_scanner = SecurityScanner()
+            # Initialize security scanner with GitGuardian API key if available
+            gitguardian_key = os.getenv('GITGUARDIAN_API_KEY')
+            self.security_scanner = SecurityScanner(gitguardian_api_key=gitguardian_key)
         except Exception as e:
             raise ValueError(f"Failed to initialize Git repository at {repo_path}: {e}")
     
