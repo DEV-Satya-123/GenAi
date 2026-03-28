@@ -1,9 +1,36 @@
-langchain>=0.1.0
-langchain-google-genai>=0.0.6
-langgraph>=0.0.20
-gitpython>=3.1.40
-python-dotenv>=1.0.0
-watchdog>=3.0.0
-ipykernel>=6.29.0
-jupyter>=1.0.0
-ipykernel>=6.29.0 
+# FastAPI and server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+websockets==12.0
+
+# AI and LangChain (compatible versions)
+langchain==0.1.0
+langchain-google-genai==0.0.6
+langchain-core>=0.1.7,<0.2
+google-generativeai==0.3.2
+
+# Git operations
+GitPython==3.1.40
+
+# Data handling
+pydantic==2.5.0
+python-multipart==0.0.6
+
+# HTTP client
+httpx==0.25.2
+requests==2.31.0
+
+# Environment variables
+python-dotenv==1.0.0
+
+# Date/time handling
+python-dateutil==2.8.2
+
+# JSON handling
+orjson==3.9.10
+
+# Async support
+aiofiles==23.2.1
+
+# Security (use compatible version)
+cryptography>=3.4.8

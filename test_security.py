@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Quick test script for the security scanner
+Quick test script for the enhanced security scanner
 """
 
 from security.security_scanner import SecurityScanner, SecurityLevel
 
-def test_security_scanner():
+def test_enhanced_security_scanner():
     scanner = SecurityScanner()
     
     # Test cases with different security issues
@@ -24,46 +24,66 @@ def test_security_scanner():
             "files": ["src/utils.py"]
         },
         {
-            "name": "API key detected",
+            "name": "Dangerous .gitignore modification",
             "diff": """
-+++ b/config.py
-@@ -1,3 +1,4 @@
- DATABASE_URL = "sqlite:///app.db"
-+API_KEY = "sk-1234567890abcdef1234567890abcdef"
- DEBUG = True
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,5 +1,4 @@
+ node_modules/
+ dist/
+-.env
+ *.log
+ .DS_Store
 """,
-            "files": ["config.py"]
+            "files": [".gitignore"]
         },
         {
-            "name": "Database password",
+            "name": "Sensitive file being tracked",
             "diff": """
-+++ b/settings.py
-@@ -1,3 +1,4 @@
- HOST = "localhost"
-+PASSWORD = "super_secret_password"
- PORT = 5432
++++ b/.env
+@@ -0,0 +1,3 @@
++DATABASE_URL=postgresql://user:password@localhost/db
++API_KEY=sk-1234567890abcdef
++JWT_SECRET=super_secret_key
 """,
-            "files": ["settings.py"]
+            "files": [".env"]
         },
         {
-            "name": "Private key",
+            "name": "Private key file added",
             "diff": """
-+++ b/keys/private.key
++++ b/keys/id_rsa
 @@ -0,0 +1,5 @@
 +-----BEGIN PRIVATE KEY-----
 +MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7...
 +-----END PRIVATE KEY-----
 """,
-            "files": ["keys/private.key"]
+            "files": ["keys/id_rsa"]
+        },
+        {
+            "name": "Multiple gitignore patterns removed",
+            "diff": """
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,8 +1,5 @@
+ node_modules/
+ dist/
+-.env
+-.env.local
+-*.key
+-*.pem
+ *.log
+ .DS_Store
+""",
+            "files": [".gitignore"]
         }
     ]
     
-    print("🛡️ Security Scanner Test Results")
-    print("=" * 50)
+    print("🛡️ Enhanced Security Scanner Test Results")
+    print("=" * 60)
     
     for test_case in test_cases:
         print(f"\n📋 Test: {test_case['name']}")
-        print("-" * 30)
+        print("-" * 40)
         
         issues, level = scanner.scan_diff(test_case['diff'], test_case['files'])
         summary = scanner.get_security_summary(issues, level)
@@ -77,7 +97,7 @@ def test_security_scanner():
             for issue in issues:
                 print(f"  • {issue.type}: {issue.message}")
                 if issue.suggestion:
-                    print(f"    Suggestion: {issue.suggestion}")
+                    print(f"    💡 {issue.suggestion}")
 
 if __name__ == "__main__":
-    test_security_scanner()
+    test_enhanced_security_scanner()
