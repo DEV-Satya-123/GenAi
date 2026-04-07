@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Play, Square, GitCommit, Activity } from 'lucide-react'
-import axios from 'axios'
+import api from '../utils/axios'
 import ApprovalModal from './ApprovalModal'
 
 interface DashboardProps {
@@ -175,7 +175,7 @@ export default function Dashboard({ onRunStart, onRunEnd }: DashboardProps) {
         try {
             addLog('🚀 Starting AI Git Automation Agent...')
 
-            const response = await axios.post('/api/run')
+            const response = await api.post('/api/run')
 
             if (response.data.success) {
                 addLog('✅ Agent execution completed successfully')
@@ -200,7 +200,7 @@ export default function Dashboard({ onRunStart, onRunEnd }: DashboardProps) {
 
         try {
             // Send approval via new API endpoint
-            const response = await axios.post('/api/approve', approvalData)
+            const response = await api.post('/api/approve', approvalData)
             console.log('📥 Approval response:', response.data)
 
             addLog(`✅ ${approvalModal.type === 'commit' ? 'Commit' : 'Push'} ${approved ? 'approved' : 'rejected'}`)

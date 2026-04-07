@@ -38,3 +38,8 @@ cryptography>=3.4.8
 slowapi==0.1.9  # Rate limiting
 bandit==1.7.5  # Security linter
 safety==2.3.5  # Dependency vulnerability scanner
+
+# Authentication
+python-jose[cryptography]==3.3.0  # JWT tokens
+passlib[bcrypt]==1.7.4  # Password hashing
+python-multipart==0.0.6  # Form data

@@ -13,19 +13,28 @@
 - **Clone Operations**: 5 requests/minute
 - **Run Agent**: 10 requests/minute
 - **Status Checks**: 60 requests/minute
+- **Registration**: 5 requests/hour
+- **Login**: 10 requests/minute
 
-### 3. Audit Logging ✅
+### 3. Authentication & Authorization ✅
+- **JWT Tokens**: Secure token-based authentication
+- **Password Hashing**: PBKDF2 with 100,000 iterations
+- **Salt**: 32-byte cryptographically secure random salt
+- **Token Expiry**: 30 minutes (configurable)
+- **Protected Endpoints**: All API endpoints require authentication
+
+### 4. Audit Logging ✅
 - All security-relevant events logged to `security_audit.log`
-- Tracks: clones, commits, pushes, security scans, failed validations
+- Tracks: clones, commits, pushes, security scans, failed validations, login attempts
 - Includes: timestamp, IP address, event type, success/failure
 
-### 4. Secure Error Handling ✅
+### 5. Secure Error Handling ✅
 - No stack traces exposed to users
 - Sanitized error messages
 - Internal errors logged for debugging
 - Request IDs for support tracking
 
-### 5. Secret Scanning ✅
+### 6. Secret Scanning ✅
 - GitGuardian integration for detecting leaked secrets
 - Scans before commits
 - Prevents accidental exposure of API keys, passwords, tokens

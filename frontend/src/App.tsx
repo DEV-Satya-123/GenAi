@@ -1,21 +1,70 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import Dashboard from './components/Dashboard'
 import Header from './components/Header'
 import StatusCard from './components/StatusCard'
 import RepositoryManager from './components/RepositoryManager'
+import Login from './components/Login'
+import Register from './components/Register'
 
 function App() {
   const [isRunning, setIsRunning] = useState(false)
   const [currentRepoPath, setCurrentRepoPath] = useState('')
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [showRegister, setShowRegister] = useState(false)
+  const [authToken, setAuthToken] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Check if user is already logged in
+    const token = localStorage.getItem('auth_token')
+    if (token) {
+      setAuthToken(token)
+      setIsAuthenticated(true)
+    }
+  }, [])
+
+  const handleLoginSuccess = (token: string) => {
+    setAuthToken(token)
+    setIsAuthenticated(true)
+  }
+
+  const handleRegisterSuccess = () => {
+    setShowRegister(false)
+    // Show success message or auto-login
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem('auth_token')
+    setAuthToken(null)
+    setIsAuthenticated(false)
+  }
 
   const handleRepositoryChange = (repoPath: string) => {
     setCurrentRepoPath(repoPath)
   }
 
+  // Show login/register if not authenticated
+  if (!isAuthenticated) {
+    if (showRegister) {
+      return (
+        <Register
+          onRegisterSuccess={handleRegisterSuccess}
+          onSwitchToLogin={() => setShowRegister(false)}
+        />
+      )
+    }
+    return (
+      <Login
+        onLoginSuccess={handleLoginSuccess}
+        onSwitchToRegister={() => setShowRegister(true)}
+      />
+    )
+  }
+
+  // Show main app if authenticated
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
-      <Header />
+      <Header onLogout={handleLogout} />
       
       <main className="container mx-auto px-4 py-8">
         <motion.div

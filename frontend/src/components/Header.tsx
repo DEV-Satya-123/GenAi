@@ -1,7 +1,11 @@
-import { GitBranch, Sparkles } from 'lucide-react'
+import { GitBranch, Sparkles, LogOut, User } from 'lucide-react'
 import { motion } from 'framer-motion'
 
-export default function Header() {
+interface HeaderProps {
+    onLogout?: () => void
+}
+
+export default function Header({ onLogout }: HeaderProps) {
     return (
         <motion.header
             initial={{ y: -100 }}
@@ -19,9 +23,23 @@ export default function Header() {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2 px-4 py-2 glass rounded-full">
-                    <Sparkles className="w-4 h-4 text-yellow-400 animate-pulse" />
-                    <span className="text-sm">Live</span>
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 px-4 py-2 glass rounded-full">
+                        <Sparkles className="w-4 h-4 text-yellow-400 animate-pulse" />
+                        <span className="text-sm">Live</span>
+                    </div>
+
+                    {onLogout && (
+                        <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={onLogout}
+                            className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-medium transition-colors"
+                        >
+                            <LogOut className="w-4 h-4" />
+                            Logout
+                        </motion.button>
+                    )}
                 </div>
             </div>
         </motion.header>

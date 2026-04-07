@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, GitBranch, Trash2, Check, X, Download, Folder, ExternalLink } from 'lucide-react'
-import axios from 'axios'
+import api from '../utils/axios'
 
 interface Repository {
     id: string
@@ -37,7 +37,7 @@ export default function RepositoryManager({ onRepositoryChange }: RepositoryMana
 
     const fetchRepositories = async () => {
         try {
-            const response = await axios.get('/api/repositories')
+            const response = await api.get('/api/repositories')
             if (response.data.success) {
                 setRepositories(response.data.repositories)
             }
@@ -51,7 +51,7 @@ export default function RepositoryManager({ onRepositoryChange }: RepositoryMana
 
         setIsCloning(true)
         try {
-            const response = await axios.post('/api/clone-to-path', {
+            const response = await api.post('/api/clone-to-path', {
                 git_url: cloneUrl,
                 clone_to_path: cloneToPath,
                 name: repoName || undefined
@@ -77,7 +77,7 @@ export default function RepositoryManager({ onRepositoryChange }: RepositoryMana
 
         setIsCloning(true)
         try {
-            const response = await axios.post('/api/add-local', {
+            const response = await api.post('/api/add-local', {
                 local_path: localPath,
                 name: localRepoName || undefined
             })
@@ -98,7 +98,7 @@ export default function RepositoryManager({ onRepositoryChange }: RepositoryMana
 
     const handleSetActive = async (repoId: string) => {
         try {
-            const response = await axios.post('/api/set-active-repo', {
+            const response = await api.post('/api/set-active-repo', {
                 repo_id: repoId
             })
 
@@ -118,7 +118,7 @@ export default function RepositoryManager({ onRepositoryChange }: RepositoryMana
         if (!confirm(confirmMessage)) return
 
         try {
-            const response = await axios.delete(`/api/repository/${repoId}`)
+            const response = await api.delete(`/api/repository/${repoId}`)
             if (response.data.success) {
                 await fetchRepositories()
                 alert(`✅ Repository "${repoName}" has been completely removed\n\n📁 All files and folders have been deleted from your computer`)

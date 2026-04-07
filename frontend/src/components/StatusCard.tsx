@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { GitBranch, FileText, CheckCircle, XCircle } from 'lucide-react'
-import axios from 'axios'
+import api from '../utils/axios'
 
 interface Status {
   has_changes: boolean
@@ -21,7 +21,7 @@ export default function StatusCard() {
 
   const fetchStatus = async () => {
     try {
-      const response = await axios.get('/api/status')
+      const response = await api.get('/api/status')
       setStatus(response.data)
       setLoading(false)
     } catch (error) {
