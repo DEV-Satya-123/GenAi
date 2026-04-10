@@ -18,8 +18,8 @@ export default function Header({ onLogout }: HeaderProps) {
                         <GitBranch className="w-6 h-6" />
                     </div>
                     <div>
-                        <h1 className="text-xl font-bold">AI Git Automation</h1>
-                        <p className="text-xs text-gray-400">Powered by Gemini AI</p>
+                        <h1 className="text-xl font-bold">AI Git Automation </h1>
+                        <p className="text-xs text-gray-400">Intelligent Automation</p>
                     </div>
                 </div>
 

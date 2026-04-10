@@ -362,6 +362,113 @@ async def websocket_endpoint(websocket: WebSocket):
     await handle_websocket(websocket, ws_manager)
 
 
+# ============= New Features: Search & Smart .gitignore =============
+
+@app.get("/api/search-commits")
+@limiter.limit(RATE_LIMITS["default"])
+async def search_commits(
+    request: Request,
+    query: str,
+    max_results: int = 10,
+    current_user: dict = Depends(get_current_user)
+):
+    """Search commits by message, author, or content"""
+    if not repo_service.current_repo_path:
+        raise HTTPException(status_code=400, detail="No active repository")
+    
+    try:
+        from tools.git_tools import GitTools
+        git_tools = GitTools(repo_service.current_repo_path)
+        results = git_tools.search_commits(query, max_results)
+        
+        return {
+            "success": True,
+            "query": query,
+            "results": results,
+            "count": len(results)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/commit-history")
+@limiter.limit(RATE_LIMITS["default"])
+async def get_commit_history(
+    request: Request,
+    max_count: int = 20,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get recent commit history"""
+    if not repo_service.current_repo_path:
+        raise HTTPException(status_code=400, detail="No active repository")
+    
+    try:
+        from tools.git_tools import GitTools
+        git_tools = GitTools(repo_service.current_repo_path)
+        commits = git_tools.get_commit_history(max_count)
+        
+        return {
+            "success": True,
+            "commits": commits,
+            "count": len(commits)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/gitignore-check")
+@limiter.limit(RATE_LIMITS["default"])
+async def check_gitignore(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    """Check .gitignore status and get recommendations"""
+    if not repo_service.current_repo_path:
+        raise HTTPException(status_code=400, detail="No active repository")
+    
+    try:
+        from tools.git_tools import GitTools
+        git_tools = GitTools(repo_service.current_repo_path)
+        result = git_tools.smart_gitignore_check()
+        
+        return {
+            "success": True,
+            **result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/gitignore-fix")
+@limiter.limit(RATE_LIMITS["default"])
+async def fix_gitignore(
+    request: Request,
+    project_type: str = "python",
+    current_user: dict = Depends(get_current_user)
+):
+    """Automatically fix .gitignore issues"""
+    if not repo_service.current_repo_path:
+        raise HTTPException(status_code=400, detail="No active repository")
+    
+    try:
+        from tools.git_tools import GitTools
+        git_tools = GitTools(repo_service.current_repo_path)
+        result = git_tools.auto_fix_gitignore(project_type)
+        
+        # Notify via WebSocket
+        await ws_manager.broadcast({
+            "type": "gitignore_fixed",
+            "data": result
+        })
+        
+        return {
+            "success": result['success'],
+            **result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
     print("🚀 Starting AI Git Automation API...")
@@ -374,3 +481,53 @@ if __name__ == "__main__":
     print("   ✓ Audit logging")
     print("   ✓ Secure error handling")
     uvicorn.run(app, host="0.0.0.0", port=settings.PORT, log_level="info")
+
+async def check_gitignore(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    """Check .gitignore status and get recommendations"""
+    if not repo_service.current_repo_path:
+        raise HTTPException(status_code=400, detail="No active repository")
+    
+    try:
+        from tools.git_tools import GitTools
+        git_tools = GitTools(repo_service.current_repo_path)
+        result = git_tools.smart_gitignore_check()
+        
+        return {
+            "success": True,
+            **result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/gitignore-fix")
+@limiter.limit(RATE_LIMITS["default"])
+async def fix_gitignore(
+    request: Request,
+    project_type: str = "python",
+    current_user: dict = Depends(get_current_user)
+):
+    """Automatically fix .gitignore issues"""
+    if not repo_service.current_repo_path:
+        raise HTTPException(status_code=400, detail="No active repository")
+    
+    try:
+        from tools.git_tools import GitTools
+        git_tools = GitTools(repo_service.current_repo_path)
+        result = git_tools.auto_fix_gitignore(project_type)
+        
+        # Notify via WebSocket
+        await ws_manager.broadcast({
+            "type": "gitignore_fixed",
+            "data": result
+        })
+        
+        return {
+            "success": result['success'],
+            **result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

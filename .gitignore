@@ -26,6 +26,8 @@ build/
 users.json
 security_audit.log
 *.log
+cloned-repos/repos.json
+cloned-repos/*.json
 
 # IDE
 .vscode/

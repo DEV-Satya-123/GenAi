@@ -198,3 +198,362 @@ class GitTools:
             return False, f"🔍 SECURITY NOTICE: Minor issues detected\n\n{summary}"
         else:
             return False, f"✅ SECURITY CHECK: Safe to commit\n\n{summary}"
+
+    def search_commits(self, query: str, max_results: int = 10) -> List[dict]:
+        """
+        Search commits by message, author, or content
+        
+        Args:
+            query: Search term
+            max_results: Maximum number of results to return
+            
+        Returns:
+            List of commit dictionaries with hash, message, author, date
+        """
+        try:
+            results = []
+            # Search in commit messages
+            commits = list(self.repo.iter_commits(max_count=100))
+            
+            for commit in commits:
+                # Search in commit message
+                if query.lower() in commit.message.lower():
+                    results.append({
+                        'hash': commit.hexsha[:7],
+                        'full_hash': commit.hexsha,
+                        'message': commit.message.strip(),
+                        'author': str(commit.author),
+                        'date': commit.committed_datetime.strftime('%Y-%m-%d %H:%M:%S'),
+                        'files_changed': len(commit.stats.files)
+                    })
+                    
+                    if len(results) >= max_results:
+                        break
+            
+            return results
+        except Exception as e:
+            print(f"Error searching commits: {e}")
+            return []
+    
+    def get_commit_history(self, max_count: int = 20) -> List[dict]:
+        """Get recent commit history"""
+        try:
+            commits = []
+            for commit in self.repo.iter_commits(max_count=max_count):
+                commits.append({
+                    'hash': commit.hexsha[:7],
+                    'full_hash': commit.hexsha,
+                    'message': commit.message.strip(),
+                    'author': str(commit.author),
+                    'date': commit.committed_datetime.strftime('%Y-%m-%d %H:%M:%S'),
+                    'files_changed': len(commit.stats.files)
+                })
+            return commits
+        except Exception as e:
+            print(f"Error getting commit history: {e}")
+            return []
+    
+    def check_gitignore_exists(self) -> bool:
+        """Check if .gitignore file exists"""
+        gitignore_path = os.path.join(self.repo.working_dir, '.gitignore')
+        return os.path.exists(gitignore_path)
+    
+    def create_gitignore(self, template: str = 'python') -> bool:
+        """
+        Create a .gitignore file with common patterns
+        
+        Args:
+            template: Type of project (python, node, java, etc.)
+        """
+        gitignore_path = os.path.join(self.repo.working_dir, '.gitignore')
+        
+        templates = {
+            'python': """# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment
+.env
+.env.local
+*.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Secrets
+secrets/
+*.key
+*.pem
+credentials.json
+""",
+            'node': """# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build
+dist/
+build/
+.next/
+out/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+""",
+            'general': """# Environment
+.env
+.env.local
+*.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Secrets
+secrets/
+*.key
+*.pem
+credentials.json
+"""
+        }
+        
+        try:
+            content = templates.get(template, templates['general'])
+            with open(gitignore_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            print(f"✅ Created .gitignore with {template} template")
+            return True
+        except Exception as e:
+            print(f"❌ Error creating .gitignore: {e}")
+            return False
+    
+    def get_sensitive_files_not_ignored(self) -> List[str]:
+        """
+        Detect sensitive files that should be in .gitignore but aren't
+        
+        Returns:
+            List of file patterns that should be added to .gitignore
+        """
+        sensitive_patterns = [
+            '.env', '.env.local', '.env.production', '.env.development',
+            'secrets/', 'credentials.json', '*.key', '*.pem',
+            'config/secrets.yml', 'config/database.yml',
+            '*.log', 'logs/', 'npm-debug.log',
+            '__pycache__/', '*.pyc', 'venv/', 'env/',
+            'node_modules/', '.DS_Store', 'Thumbs.db',
+            '*.db', '*.sqlite', '*.sqlite3',
+            'id_rsa', 'id_rsa.pub', '*.ppk'
+        ]
+        
+        missing_patterns = []
+        gitignore_path = os.path.join(self.repo.working_dir, '.gitignore')
+        
+        # Read existing .gitignore
+        existing_patterns = set()
+        if os.path.exists(gitignore_path):
+            try:
+                with open(gitignore_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#'):
+                            existing_patterns.add(line)
+            except Exception as e:
+                print(f"Warning: Could not read .gitignore: {e}")
+        
+        # Check which sensitive patterns are missing
+        for pattern in sensitive_patterns:
+            if pattern not in existing_patterns:
+                # Check if any files matching this pattern exist
+                if self._pattern_matches_files(pattern):
+                    missing_patterns.append(pattern)
+        
+        return missing_patterns
+    
+    def _pattern_matches_files(self, pattern: str) -> bool:
+        """Check if a pattern matches any files in the repository"""
+        try:
+            import fnmatch
+            
+            # Handle directory patterns
+            if pattern.endswith('/'):
+                dir_name = pattern.rstrip('/')
+                for root, dirs, files in os.walk(self.repo.working_dir):
+                    if dir_name in dirs:
+                        return True
+            
+            # Handle file patterns
+            for root, dirs, files in os.walk(self.repo.working_dir):
+                # Skip .git directory
+                if '.git' in root:
+                    continue
+                    
+                for file in files:
+                    if fnmatch.fnmatch(file, pattern) or fnmatch.fnmatch(os.path.join(root, file), pattern):
+                        return True
+            
+            return False
+        except Exception:
+            return False
+    
+    def add_to_gitignore(self, patterns: List[str]) -> bool:
+        """
+        Add patterns to .gitignore file
+        
+        Args:
+            patterns: List of patterns to add
+        """
+        gitignore_path = os.path.join(self.repo.working_dir, '.gitignore')
+        
+        try:
+            # Read existing content
+            existing_content = ""
+            if os.path.exists(gitignore_path):
+                with open(gitignore_path, 'r', encoding='utf-8') as f:
+                    existing_content = f.read()
+            
+            # Add new patterns
+            with open(gitignore_path, 'a', encoding='utf-8') as f:
+                if existing_content and not existing_content.endswith('\n'):
+                    f.write('\n')
+                
+                f.write('\n# Auto-added sensitive file patterns\n')
+                for pattern in patterns:
+                    f.write(f'{pattern}\n')
+            
+            print(f"✅ Added {len(patterns)} patterns to .gitignore")
+            return True
+        except Exception as e:
+            print(f"❌ Error updating .gitignore: {e}")
+            return False
+    
+    def smart_gitignore_check(self) -> dict:
+        """
+        Smart .gitignore management:
+        1. Check if .gitignore exists
+        2. If not, suggest creating one
+        3. If yes, check for missing sensitive patterns
+        
+        Returns:
+            Dictionary with status and recommendations
+        """
+        result = {
+            'has_gitignore': False,
+            'missing_patterns': [],
+            'recommendations': [],
+            'auto_fix_available': False
+        }
+        
+        # Check if .gitignore exists
+        result['has_gitignore'] = self.check_gitignore_exists()
+        
+        if not result['has_gitignore']:
+            result['recommendations'].append('Create .gitignore file')
+            result['auto_fix_available'] = True
+            return result
+        
+        # Check for missing sensitive patterns
+        missing = self.get_sensitive_files_not_ignored()
+        result['missing_patterns'] = missing
+        
+        if missing:
+            result['recommendations'].append(f'Add {len(missing)} sensitive patterns to .gitignore')
+            result['auto_fix_available'] = True
+        else:
+            result['recommendations'].append('✅ .gitignore is properly configured')
+        
+        return result
+    
+    def auto_fix_gitignore(self, project_type: str = 'python') -> dict:
+        """
+        Automatically fix .gitignore issues
+        
+        Args:
+            project_type: Type of project for template selection
+            
+        Returns:
+            Dictionary with actions taken
+        """
+        result = {
+            'actions_taken': [],
+            'success': True,
+            'message': ''
+        }
+        
+        # Check if .gitignore exists
+        if not self.check_gitignore_exists():
+            if self.create_gitignore(project_type):
+                result['actions_taken'].append(f'Created .gitignore with {project_type} template')
+            else:
+                result['success'] = False
+                result['message'] = 'Failed to create .gitignore'
+                return result
+        
+        # Check for missing patterns
+        missing = self.get_sensitive_files_not_ignored()
+        if missing:
+            if self.add_to_gitignore(missing):
+                result['actions_taken'].append(f'Added {len(missing)} sensitive patterns to .gitignore')
+            else:
+                result['success'] = False
+                result['message'] = 'Failed to update .gitignore'
+                return result
+        
+        if not result['actions_taken']:
+            result['message'] = '✅ .gitignore is already properly configured'
+        else:
+            result['message'] = f"✅ Fixed .gitignore: {', '.join(result['actions_taken'])}"
+        
+        return result

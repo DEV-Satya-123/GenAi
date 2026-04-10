@@ -6,6 +6,9 @@ import StatusCard from './components/StatusCard'
 import RepositoryManager from './components/RepositoryManager'
 import Login from './components/Login'
 import Register from './components/Register'
+import SearchCommits from './components/SearchCommits'
+import GitignoreManager from './components/GitignoreManager'
+import CommitHistory from './components/CommitHistory'
 
 function App() {
   const [isRunning, setIsRunning] = useState(false)
@@ -65,7 +68,7 @@ function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
       <Header onLogout={handleLogout} />
-      
+
       <main className="container mx-auto px-4 py-8">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -75,8 +78,8 @@ function App() {
           <h1 className="text-5xl font-bold text-center mb-4 gradient-text">
             AI Git Automation
           </h1>
-          <p className="text-center text-gray-400 mb-12">
-            Intelligent commit message generation powered by Google Gemini
+          <p className="text-center text-blue-800 mb-12 text-2xl">
+            Intelligent commit message generation powered by Agent
           </p>
         </motion.div>
 
@@ -86,10 +89,22 @@ function App() {
           <StatusCard />
         </div>
 
-        <Dashboard 
+        <Dashboard
           onRunStart={() => setIsRunning(true)}
           onRunEnd={() => setIsRunning(false)}
         />
+
+        {/* New Features Section */}
+        <div className="mt-8 space-y-6">
+          {/* .gitignore Manager */}
+          <GitignoreManager />
+
+          {/* Search and History in Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <SearchCommits />
+            <CommitHistory />
+          </div>
+        </div>
       </main>
     </div>
   )
