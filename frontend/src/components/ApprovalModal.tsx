@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Check, X, Edit3, GitCommit, Upload } from 'lucide-react'
+import DiffViewer from './DiffViewer'
 
 interface ApprovalModalProps {
   isOpen: boolean
@@ -8,6 +9,13 @@ interface ApprovalModalProps {
   message: string
   securitySummary?: string
   securityLevel?: string
+  diff?: string
+  files?: string[]
+  stats?: {
+    additions: number
+    deletions: number
+    filesChanged: number
+  }
   onApprove: (editedMessage?: string) => void
   onReject: () => void
   onClose?: () => void
@@ -19,6 +27,9 @@ export default function ApprovalModal({
   message,
   securitySummary,
   securityLevel,
+  diff,
+  files,
+  stats,
   onApprove,
   onReject,
   onClose
@@ -161,6 +172,13 @@ export default function ApprovalModal({
                     {securitySummary}
                   </pre>
                 </div>
+              </div>
+            )}
+
+            {/* Diff Viewer Section */}
+            {type === 'commit' && diff && (
+              <div className="mb-6">
+                <DiffViewer diff={diff} files={files} stats={stats} />
               </div>
             )}
 

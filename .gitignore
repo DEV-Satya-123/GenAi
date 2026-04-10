@@ -38,3 +38,10 @@ cloned-repos/*.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Auto-added sensitive file patterns
+*.pem
+logs/
+node_modules/
+
+
