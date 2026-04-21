@@ -4,11 +4,15 @@ import Dashboard from './components/Dashboard'
 import Header from './components/Header'
 import StatusCard from './components/StatusCard'
 import RepositoryManager from './components/RepositoryManager'
+import RepositoryOverview from './components/RepositoryOverview'
 import Login from './components/Login'
 import Register from './components/Register'
 import SearchCommits from './components/SearchCommits'
 import GitignoreManager from './components/GitignoreManager'
 import CommitHistory from './components/CommitHistory'
+import RemoteStatusBanner from './components/RemoteStatusBanner'
+
+type Page = 'dashboard' | 'overview'
 
 function App() {
   const [isRunning, setIsRunning] = useState(false)
@@ -16,6 +20,7 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [showRegister, setShowRegister] = useState(false)
   const [authToken, setAuthToken] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState<Page>('dashboard')
 
   useEffect(() => {
     // Check if user is already logged in
@@ -40,10 +45,19 @@ function App() {
     localStorage.removeItem('auth_token')
     setAuthToken(null)
     setIsAuthenticated(false)
+    setCurrentPage('dashboard')
   }
 
   const handleRepositoryChange = (repoPath: string) => {
     setCurrentRepoPath(repoPath)
+  }
+
+  const handleShowOverview = () => {
+    setCurrentPage('overview')
+  }
+
+  const handleBackToDashboard = () => {
+    setCurrentPage('dashboard')
   }
 
   // Show login/register if not authenticated
@@ -64,7 +78,17 @@ function App() {
     )
   }
 
-  // Show main app if authenticated
+  // Show Overview Page
+  if (currentPage === 'overview') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+        <Header onLogout={handleLogout} />
+        <RepositoryOverview onClose={handleBackToDashboard} />
+      </div>
+    )
+  }
+
+  // Show main dashboard
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
       <Header onLogout={handleLogout} />
@@ -83,7 +107,13 @@ function App() {
           </p>
         </motion.div>
 
-        <RepositoryManager onRepositoryChange={handleRepositoryChange} />
+        <RepositoryManager 
+          onRepositoryChange={handleRepositoryChange}
+          onShowOverview={handleShowOverview}
+        />
+
+        {/* Remote Status Banner - Shows GitHub changes */}
+        <RemoteStatusBanner />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           <StatusCard />

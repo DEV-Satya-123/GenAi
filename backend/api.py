@@ -469,6 +469,77 @@ async def fix_gitignore(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ============= Remote Status Checker (Read-Only) =============
+
+@app.get("/api/remote-status")
+@limiter.limit(RATE_LIMITS["default"])
+async def check_remote_status(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    """Check remote repository status (read-only, safe)"""
+    if not repo_service.current_repo_path:
+        raise HTTPException(status_code=400, detail="No active repository")
+    
+    try:
+        from tools.git_tools import GitTools
+        git_tools = GitTools(repo_service.current_repo_path)
+        status = git_tools.fetch_remote_status()
+        
+        return {
+            "success": True,
+            **status
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/remote-info")
+@limiter.limit(RATE_LIMITS["default"])
+async def get_remote_info(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get remote configuration info"""
+    if not repo_service.current_repo_path:
+        raise HTTPException(status_code=400, detail="No active repository")
+    
+    try:
+        from tools.git_tools import GitTools
+        git_tools = GitTools(repo_service.current_repo_path)
+        info = git_tools.get_remote_info()
+        
+        return {
+            "success": True,
+            **info
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/repository-stats")
+@limiter.limit(RATE_LIMITS["default"])
+async def get_repository_statistics(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get comprehensive repository statistics"""
+    if not repo_service.current_repo_path:
+        raise HTTPException(status_code=400, detail="No active repository")
+    
+    try:
+        from tools.git_tools import GitTools
+        git_tools = GitTools(repo_service.current_repo_path)
+        stats = git_tools.get_repository_statistics()
+        
+        return {
+            "success": True,
+            **stats
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
     print("🚀 Starting AI Git Automation API...")
@@ -482,52 +553,3 @@ if __name__ == "__main__":
     print("   ✓ Secure error handling")
     uvicorn.run(app, host="0.0.0.0", port=settings.PORT, log_level="info")
 
-async def check_gitignore(
-    request: Request,
-    current_user: dict = Depends(get_current_user)
-):
-    """Check .gitignore status and get recommendations"""
-    if not repo_service.current_repo_path:
-        raise HTTPException(status_code=400, detail="No active repository")
-    
-    try:
-        from tools.git_tools import GitTools
-        git_tools = GitTools(repo_service.current_repo_path)
-        result = git_tools.smart_gitignore_check()
-        
-        return {
-            "success": True,
-            **result
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/gitignore-fix")
-@limiter.limit(RATE_LIMITS["default"])
-async def fix_gitignore(
-    request: Request,
-    project_type: str = "python",
-    current_user: dict = Depends(get_current_user)
-):
-    """Automatically fix .gitignore issues"""
-    if not repo_service.current_repo_path:
-        raise HTTPException(status_code=400, detail="No active repository")
-    
-    try:
-        from tools.git_tools import GitTools
-        git_tools = GitTools(repo_service.current_repo_path)
-        result = git_tools.auto_fix_gitignore(project_type)
-        
-        # Notify via WebSocket
-        await ws_manager.broadcast({
-            "type": "gitignore_fixed",
-            "data": result
-        })
-        
-        return {
-            "success": result['success'],
-            **result
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))

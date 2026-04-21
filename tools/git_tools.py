@@ -557,3 +557,284 @@ credentials.json
             result['message'] = f"✅ Fixed .gitignore: {', '.join(result['actions_taken'])}"
         
         return result
+
+    def get_remote_info(self) -> dict:
+        """Get information about configured remotes"""
+        try:
+            remotes = []
+            for remote in self.repo.remotes:
+                remotes.append({
+                    'name': remote.name,
+                    'url': remote.url,
+                    'fetch_url': list(remote.urls)[0] if remote.urls else None
+                })
+            
+            return {
+                'success': True,
+                'has_remotes': len(remotes) > 0,
+                'remotes': remotes,
+                'current_branch': self.repo.active_branch.name if self.repo.active_branch else None
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def get_repository_statistics(self) -> dict:
+        """Get comprehensive repository statistics"""
+        try:
+            stats = {
+                'total_commits': 0,
+                'contributors': {},
+                'branches': [],
+                'current_branch': '',
+                'total_files': 0,
+                'languages': {},
+                'first_commit_date': None,
+                'last_commit_date': None,
+                'active_days': 0,
+                'commits_by_month': {},
+                'top_contributors': []
+            }
+            
+            # Get current branch
+            try:
+                stats['current_branch'] = self.repo.active_branch.name
+            except:
+                stats['current_branch'] = 'detached HEAD'
+            
+            # Get all branches
+            stats['branches'] = [branch.name for branch in self.repo.branches]
+            
+            # Get commit statistics
+            commits = list(self.repo.iter_commits('--all', max_count=1000))
+            stats['total_commits'] = len(commits)
+            
+            if commits:
+                # First and last commit dates
+                stats['first_commit_date'] = commits[-1].committed_datetime.strftime('%Y-%m-%d')
+                stats['last_commit_date'] = commits[0].committed_datetime.strftime('%Y-%m-%d')
+                
+                # Calculate active days
+                commit_dates = set()
+                for commit in commits:
+                    date_str = commit.committed_datetime.strftime('%Y-%m-%d')
+                    commit_dates.add(date_str)
+                    
+                    # Count commits by month
+                    month_key = commit.committed_datetime.strftime('%Y-%m')
+                    stats['commits_by_month'][month_key] = stats['commits_by_month'].get(month_key, 0) + 1
+                    
+                    # Count contributors
+                    author = str(commit.author.name)
+                    if author not in stats['contributors']:
+                        stats['contributors'][author] = {
+                            'name': author,
+                            'email': str(commit.author.email),
+                            'commits': 0
+                        }
+                    stats['contributors'][author]['commits'] += 1
+                
+                stats['active_days'] = len(commit_dates)
+            
+            # Get top contributors
+            stats['top_contributors'] = sorted(
+                stats['contributors'].values(),
+                key=lambda x: x['commits'],
+                reverse=True
+            )[:10]
+            
+            # Count files by extension
+            try:
+                import os
+                from collections import Counter
+                
+                extensions = Counter()
+                total_files = 0
+                
+                # Directories to skip
+                skip_dirs = {
+                    '.git', 'node_modules', '__pycache__', 'venv', 'env',
+                    '.venv', 'dist', 'build', '.next', 'out', 'target',
+                    'coverage', '.coverage', 'htmlcov', '.pytest_cache',
+                    '.mypy_cache', '.tox', 'eggs', '.eggs', '*.egg-info',
+                    '.idea', '.vscode', 'vendor', 'bower_components'
+                }
+                
+                for root, dirs, files in os.walk(self.repo.working_dir):
+                    # Remove skip directories from dirs list to prevent walking into them
+                    dirs[:] = [d for d in dirs if d not in skip_dirs and not d.startswith('.')]
+                    
+                    # Skip if current directory is in skip list
+                    if any(skip_dir in root for skip_dir in skip_dirs):
+                        continue
+                    
+                    for file in files:
+                        # Skip hidden files and common build artifacts
+                        if file.startswith('.') or file.endswith(('.pyc', '.pyo', '.so', '.dll', '.dylib')):
+                            continue
+                        
+                        total_files += 1
+                        ext = os.path.splitext(file)[1]
+                        if ext:
+                            extensions[ext] += 1
+                        else:
+                            # Files without extension
+                            extensions['[no ext]'] = extensions.get('[no ext]', 0) + 1
+                
+                stats['total_files'] = total_files
+                stats['languages'] = dict(extensions.most_common(10))
+            except Exception as e:
+                print(f"Error counting files: {e}")
+            
+            return {
+                'success': True,
+                **stats
+            }
+            
+        except Exception as e:
+            import traceback
+            print(f"Error getting repository statistics: {traceback.format_exc()}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    def fetch_remote_status(self):
+        """
+        Fetch and compare with remote (read-only, safe)
+        Shows what changed on GitHub without pulling
+        """
+        try:
+            # Check if remote exists
+            if not self.repo.remotes:
+                return {
+                    'success': False,
+                    'is_behind': False,
+                    'message': '⚠️ No remote configured. Add a remote with: git remote add origin <url>'
+                }
+            
+            # Get origin remote
+            try:
+                origin = self.repo.remote('origin')
+            except:
+                return {
+                    'success': False,
+                    'is_behind': False,
+                    'message': '⚠️ No "origin" remote found. Configure remote first.'
+                }
+            
+            # Check if remote URL is set
+            if not origin.url:
+                return {
+                    'success': False,
+                    'is_behind': False,
+                    'message': '⚠️ Remote "origin" has no URL configured'
+                }
+            
+            # Fetch from remote (safe, doesn't change local files)
+            print(f"🔄 Fetching from remote: {origin.url}")
+            try:
+                origin.fetch()
+            except Exception as fetch_error:
+                return {
+                    'success': False,
+                    'is_behind': False,
+                    'message': f'⚠️ Failed to fetch from remote: {str(fetch_error)}'
+                }
+            
+            # Get current branch
+            try:
+                current_branch = self.repo.active_branch.name
+            except:
+                return {
+                    'success': False,
+                    'is_behind': False,
+                    'message': '⚠️ Not on any branch (detached HEAD)'
+                }
+            
+            # Get local and remote commits
+            try:
+                local_commit = self.repo.head.commit
+                remote_commit = origin.refs[current_branch].commit
+            except Exception as ref_error:
+                return {
+                    'success': False,
+                    'is_behind': False,
+                    'message': f'⚠️ Remote branch "{current_branch}" not found. Push your branch first.'
+                }
+            
+            # Check if behind
+            commits_behind = list(self.repo.iter_commits(f'{local_commit}..{remote_commit}'))
+            
+            if not commits_behind:
+                return {
+                    'success': True,
+                    'is_behind': False,
+                    'commits_behind': 0,
+                    'message': '✅ Up to date with remote'
+                }
+            
+            # Get remote commits info
+            remote_commits = []
+            remote_files = set()
+            
+            for commit in commits_behind[:10]:  # Limit to 10 recent
+                remote_commits.append({
+                    'hash': commit.hexsha[:7],
+                    'message': commit.message.strip(),
+                    'author': str(commit.author.name),
+                    'date': commit.committed_datetime.strftime('%Y-%m-%d %H:%M:%S')
+                })
+                
+                # Get files changed in this commit
+                for item in commit.stats.files.keys():
+                    remote_files.add(item)
+            
+            # Get local modified files
+            local_files = set()
+            
+            # Staged files
+            if self.repo.index.diff("HEAD"):
+                for item in self.repo.index.diff("HEAD"):
+                    local_files.add(item.a_path)
+            
+            # Unstaged files
+            if self.repo.index.diff(None):
+                for item in self.repo.index.diff(None):
+                    local_files.add(item.a_path)
+            
+            # Untracked files
+            local_files.update(self.repo.untracked_files)
+            
+            # Find potential conflicts
+            potential_conflicts = list(remote_files & local_files)
+            
+            # Generate recommendation
+            if potential_conflicts:
+                recommendation = f"🚨 Pull before committing! {len(potential_conflicts)} file(s) have potential conflicts"
+            else:
+                recommendation = f"💡 {len(commits_behind)} new commit(s) on remote. Consider pulling first"
+            
+            return {
+                'success': True,
+                'is_behind': True,
+                'commits_behind': len(commits_behind),
+                'remote_commits': remote_commits,
+                'remote_files_changed': list(remote_files),
+                'local_files_modified': list(local_files),
+                'potential_conflicts': potential_conflicts,
+                'recommendation': recommendation,
+                'safe_to_commit': len(potential_conflicts) == 0
+            }
+            
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"❌ Error in fetch_remote_status: {error_details}")
+            return {
+                'success': False,
+                'is_behind': False,
+                'message': f'⚠️ Error checking remote: {str(e)}'
+            }

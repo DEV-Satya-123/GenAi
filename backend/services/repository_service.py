@@ -28,6 +28,9 @@ class RepositoryService:
         
         # Ensure directories exist
         os.makedirs(self.repos_dir, exist_ok=True)
+        
+        # Load active repository on startup
+        self._load_active_repository()
     
     def _load_repositories(self) -> Dict:
         """Load repository configuration"""
@@ -43,6 +46,18 @@ class RepositoryService:
         """Save repository configuration"""
         with open(self.config_file, 'w') as f:
             json.dump(repos, f, indent=2)
+    
+    def _load_active_repository(self):
+        """Load the active repository on startup"""
+        repos = self._load_repositories()
+        for repo_id, repo_data in repos.items():
+            if repo_data.get('is_active', False):
+                repo_path = repo_data.get('path')
+                if repo_path and os.path.exists(repo_path):
+                    self.current_repo_path = repo_path
+                    print(f"✅ Loaded active repository: {repo_path}")
+                    return
+        print("ℹ️ No active repository found")
     
     def _get_agent(self, repo_path: str):
         """Get or create agent instance"""

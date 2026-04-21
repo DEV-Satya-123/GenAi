@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, GitBranch, Trash2, Check, X, Download, Folder, ExternalLink } from 'lucide-react'
+import { Plus, GitBranch, Trash2, Check, X, Download, Folder, ExternalLink, BarChart3 } from 'lucide-react'
 import api from '../utils/axios'
+import RepositoryOverview from './RepositoryOverview'
 
 interface Repository {
     id: string
@@ -19,9 +20,10 @@ interface Repository {
 
 interface RepositoryManagerProps {
     onRepositoryChange: (repoPath: string) => void
+    onShowOverview: () => void
 }
 
-export default function RepositoryManager({ onRepositoryChange }: RepositoryManagerProps) {
+export default function RepositoryManager({ onRepositoryChange, onShowOverview }: RepositoryManagerProps) {
     const [repositories, setRepositories] = useState<Record<string, Repository>>({})
     const [isCloning, setIsCloning] = useState(false)
     const [showCloneForm, setShowCloneForm] = useState(false)
@@ -358,9 +360,9 @@ export default function RepositoryManager({ onRepositoryChange }: RepositoryMana
                                 : 'bg-black/20 border-white/10 hover:border-white/20'
                                 }`}
                         >
-                            <div className="flex items-center justify-between">
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-3 mb-2">
+                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap mb-2">
                                         <h3 className="font-semibold text-lg">{getRepoDisplayName(repo)}</h3>
                                         {repo.is_active && (
                                             <span className="px-2 py-1 bg-purple-500 text-white text-xs rounded-full">
@@ -384,10 +386,10 @@ export default function RepositoryManager({ onRepositoryChange }: RepositoryMana
                                         )}
                                     </div>
 
-                                    <div className="flex items-center gap-4 text-sm text-gray-400">
-                                        <div className="flex items-center gap-1">
-                                            <ExternalLink className="w-4 h-4" />
-                                            <span className="truncate max-w-xs">{repo.git_url}</span>
+                                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm text-gray-400">
+                                        <div className="flex items-center gap-1 min-w-0">
+                                            <ExternalLink className="w-4 h-4 flex-shrink-0" />
+                                            <span className="truncate">{repo.git_url}</span>
                                         </div>
 
                                         {repo.current_branch && (
@@ -407,7 +409,29 @@ export default function RepositoryManager({ onRepositoryChange }: RepositoryMana
                                     </p>
                                 </div>
 
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                    <motion.button
+                                        whileHover={{ scale: 1.05 }}
+                                        whileTap={{ scale: 0.95 }}
+                                        onClick={async () => {
+                                            if (!repo.is_active) {
+                                                await handleSetActive(repo.id)
+                                            }
+                                            // Navigate to overview page
+                                            setTimeout(() => onShowOverview(), 300)
+                                        }}
+                                        disabled={!repo.exists}
+                                        className={`flex items-center gap-1 px-3 py-1 rounded text-sm font-medium transition-colors ${
+                                            !repo.exists
+                                                ? 'bg-gray-500 cursor-not-allowed opacity-50'
+                                                : 'bg-blue-600 hover:bg-blue-700'
+                                        }`}
+                                        title="View repository statistics and overview"
+                                    >
+                                        <BarChart3 className="w-4 h-4" />
+                                        Overview
+                                    </motion.button>
+
                                     <motion.button
                                         whileHover={{ scale: 1.05 }}
                                         whileTap={{ scale: 0.95 }}
