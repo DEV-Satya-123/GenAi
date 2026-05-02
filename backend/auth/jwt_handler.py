@@ -21,6 +21,7 @@ HASH_ALGORITHM = "sha256"
 # OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
+#get_password_hash() → 2. create_access_token() → 3. decode_access_token() → 4. get_current_user()
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """

@@ -3,6 +3,11 @@ fastapi>=0.104.1
 uvicorn[standard]>=0.24.0
 websockets>=12.0
 
+# Database (PostgreSQL)
+sqlalchemy>=2.0.23
+psycopg2-binary>=2.9.9
+alembic>=1.13.0
+
 # AI and LangChain (relaxed versions for compatibility)
 langchain>=0.1.0
 langchain-google-genai>=0.0.6
